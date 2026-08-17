@@ -1,9 +1,11 @@
 spring:
   application:
-    name: sondhi-backend
+    name: eboard-backend
+
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:production}
-   datasource:
+
+  datasource:
     url: jdbc:postgresql://${PGHOST:postgres-hvox.railway.internal}:${PGPORT:5432}/${PGDATABASE:railway}
     username: ${PGUSER:postgres}
     password: ${PGPASSWORD}
@@ -11,7 +13,7 @@ spring:
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      pool-name: sondhi-pool
+      pool-name: eboard-pool
 
   jpa:
     hibernate:
@@ -45,7 +47,7 @@ security:
   jwt:
     secret: ${JWT_SECRET:ChangeThisSecretInProduction-Minimum-256-bit-key-for-HS256-Sondhi}
     access-token-expiry-minutes: ${JWT_ACCESS_EXPIRY_MINUTES:30}
-    refresh-token-expiry-days: ${JWT_REFRESH_EXPIRY_DAYS:7}
+    refresh-token-expiry-days: ${JWT_REFRESH_TOKEN_EXPIRY_DAYS:7}
   login:
     max-failed-attempts: ${LOGIN_MAX_FAILED_ATTEMPTS:5}
     lock-duration-minutes: ${LOGIN_LOCK_DURATION_MINUTES:30}
@@ -69,8 +71,8 @@ government-sms:
   connect-timeout-seconds: ${GOVERNMENT_SMS_CONNECT_TIMEOUT_SECONDS:5}
   read-timeout-seconds: ${GOVERNMENT_SMS_READ_TIMEOUT_SECONDS:10}
   text:
-    login: ${GOVERNMENT_SMS_LOGIN_TEXT:Sondhi Login OTP}
-    password-reset: ${GOVERNMENT_SMS_PASSWORD_RESET_TEXT:Sondhi Password Reset OTP}
+    login: ${GOVERNMENT_SMS_LOGIN_TEXT:eboard Login OTP}
+    password-reset: ${GOVERNMENT_SMS_PASSWORD_RESET_TEXT:Eboard Password Reset OTP}
 
 file-storage:
   base-path: ${FILE_STORAGE_BASE_PATH:./uploads}
@@ -110,7 +112,7 @@ logging:
     root: INFO
     com.sondhi: DEBUG
   file:
-    name: logs/sondhi-application.log
+    name: logs/eboard-application.log
 
 escalation:
   cron: ${ESCALATION_CRON:0 0 1 * * *}
