@@ -1,17 +1,18 @@
 spring:
   application:
-    name: eboard-backend
+    name: sondhi-backend
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:local}
   datasource:
-    url: ${DB_URL:jdbc:postgresql://10.135.28.185:5432/eboard_test}
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/eboard}
     username: ${DB_USERNAME:postgres}
     password: ${DB_PASSWORD:postgres}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      pool-name: eboard-pool
+      pool-name: sondhi-pool
+
   jpa:
     hibernate:
       ddl-auto: validate
@@ -20,20 +21,20 @@ spring:
       hibernate:
         jdbc:
           time_zone: Asia/Kolkata
+
   flyway:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: false
-    # Migration file names follow 03_DATABASE.md (V1..V12). Later phases add
-    # V3..V11 after V12 (seed) is already applied, so out-of-order is enabled.
     out-of-order: true
+
   servlet:
     multipart:
       max-file-size: 100MB
       max-request-size: 110MB
 
 server:
-  port: 8080
+  port: ${PORT:8080}
   servlet:
     context-path: /
   error:
@@ -42,7 +43,7 @@ server:
 
 security:
   jwt:
-    secret: ${JWT_SECRET:ChangeThisSecretInProduction-Minimum-256-bit-key-for-HS256-eBoard}
+    secret: ${JWT_SECRET:ChangeThisSecretInProduction-Minimum-256-bit-key-for-HS256-Sondhi}
     access-token-expiry-minutes: ${JWT_ACCESS_EXPIRY_MINUTES:30}
     refresh-token-expiry-days: ${JWT_REFRESH_EXPIRY_DAYS:7}
   login:
@@ -68,18 +69,17 @@ government-sms:
   connect-timeout-seconds: ${GOVERNMENT_SMS_CONNECT_TIMEOUT_SECONDS:5}
   read-timeout-seconds: ${GOVERNMENT_SMS_READ_TIMEOUT_SECONDS:10}
   text:
-    login: ${GOVERNMENT_SMS_LOGIN_TEXT:e-Board Login OTP}
-    password-reset: ${GOVERNMENT_SMS_PASSWORD_RESET_TEXT:e-Board Password Reset OTP}
+    login: ${GOVERNMENT_SMS_LOGIN_TEXT:Sondhi Login OTP}
+    password-reset: ${GOVERNMENT_SMS_PASSWORD_RESET_TEXT:Sondhi Password Reset OTP}
 
 file-storage:
-  base-path: D:/E-Board/uploads
+  base-path: ${FILE_STORAGE_BASE_PATH:./uploads}
 
-# Storage owned exclusively by the configurable DMS module.
 dms:
   enabled: ${DMS_ENABLED:true}
   storage:
     provider: ${DMS_STORAGE_PROVIDER:local}
-    local-base-path: ${DMS_LOCAL_STORAGE_BASE_PATH:D:/E-Board/uploads/dms}
+    local-base-path: ${DMS_LOCAL_STORAGE_BASE_PATH:./uploads/dms}
   upload:
     max-file-size-bytes: ${DMS_MAX_FILE_SIZE_BYTES:104857600}
     max-metadata-bytes: ${DMS_MAX_METADATA_BYTES:262144}
@@ -89,7 +89,7 @@ dms:
 
 app:
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://10.135.28.189:4200}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
 
 springdoc:
   api-docs:
@@ -108,21 +108,18 @@ management:
 logging:
   level:
     root: INFO
-    com.bor.eboard: DEBUG
+    com.sondhi: DEBUG
   file:
-    name: logs/eboard-application.log
+    name: logs/sondhi-application.log
 
-# Escalation sweep schedule (daily at 01:00 by default). Override to tune
-# or disable via a cron that never fires. Consumed by EscalationScheduler.
 escalation:
   cron: ${ESCALATION_CRON:0 0 1 * * *}
 
-# Central secure document viewer. Storage providers remain unchanged.
 document-viewer:
   watermark:
     enabled: ${DOCUMENT_VIEWER_WATERMARK_ENABLED:true}
-    organization: ${DOCUMENT_VIEWER_WATERMARK_ORGANIZATION:Government of Uttar Pradesh}
-    office: ${DOCUMENT_VIEWER_WATERMARK_OFFICE:Board of Revenue}
+    organization: ${DOCUMENT_VIEWER_WATERMARK_ORGANIZATION:Sondhi}
+    office: ${DOCUMENT_VIEWER_WATERMARK_OFFICE:Sondhi}
     include-ip: ${DOCUMENT_VIEWER_WATERMARK_INCLUDE_IP:true}
   sharing:
     allowed-expiry-minutes: ${DOCUMENT_VIEWER_SHARE_EXPIRY_MINUTES:30,60,1440}
