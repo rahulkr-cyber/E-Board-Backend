@@ -6,8 +6,8 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:production}
 
   datasource:
-    url: jdbc:postgresql://${PGHOST:postgres-hvox.railway.internal}:${PGPORT:5432}/${PGDATABASE:railway}
-    username: ${PGUSER:postgres}
+    url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
+    username: ${PGUSER}
     password: ${PGPASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
