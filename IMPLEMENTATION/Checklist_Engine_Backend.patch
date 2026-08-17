@@ -1,0 +1,2385 @@
+diff --git a/src/main/java/com/bor/eboard/audit/repository/AuditLogRepository.java b/src/main/java/com/bor/eboard/audit/repository/AuditLogRepository.java
+index 245e1e6..5ef3e92 100644
+--- a/src/main/java/com/bor/eboard/audit/repository/AuditLogRepository.java
++++ b/src/main/java/com/bor/eboard/audit/repository/AuditLogRepository.java
+@@ -4,8 +4,11 @@ import com.bor.eboard.audit.entity.AuditLog;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.stereotype.Repository;
+ 
++import java.util.List;
+ import java.util.UUID;
+ 
+ @Repository
+ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
++    List<AuditLog> findByModuleAndEntityTypeAndEntityIdOrderByCreatedAtAsc(
++            String module, String entityType, UUID entityId);
+ }
+diff --git a/src/main/java/com/bor/eboard/checklist/controller/ChecklistController.java b/src/main/java/com/bor/eboard/checklist/controller/ChecklistController.java
+new file mode 100644
+index 0000000..58879b1
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/controller/ChecklistController.java
+@@ -0,0 +1,131 @@
++package com.bor.eboard.checklist.controller;
++
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++import com.bor.eboard.checklist.service.ChecklistService;
++import com.bor.eboard.common.response.ApiResponse;
++import io.swagger.v3.oas.annotations.Operation;
++import io.swagger.v3.oas.annotations.tags.Tag;
++import jakarta.validation.Valid;
++import lombok.RequiredArgsConstructor;
++import org.springframework.security.access.prepost.PreAuthorize;
++import org.springframework.web.bind.annotation.DeleteMapping;
++import org.springframework.web.bind.annotation.GetMapping;
++import org.springframework.web.bind.annotation.PathVariable;
++import org.springframework.web.bind.annotation.PostMapping;
++import org.springframework.web.bind.annotation.PutMapping;
++import org.springframework.web.bind.annotation.RequestBody;
++import org.springframework.web.bind.annotation.RequestMapping;
++import org.springframework.web.bind.annotation.RequestParam;
++import org.springframework.web.bind.annotation.RestController;
++import org.springframework.web.multipart.MultipartFile;
++
++import java.util.List;
++import java.util.UUID;
++
++@RestController
++@RequestMapping("/api/v1/checklists")
++@RequiredArgsConstructor
++@Tag(name = "Checklist Engine", description = "Configurable Diary/Letter checklist module")
++public class ChecklistController {
++
++    private final ChecklistService checklistService;
++
++    @GetMapping("/templates")
++    @PreAuthorize("hasAnyAuthority('CHECKLIST_VIEW','CHECKLIST_ADMIN')")
++    public ApiResponse<List<ChecklistDtos.TemplateResponse>> templates() {
++        return ApiResponse.success(checklistService.getTemplates());
++    }
++
++    @GetMapping("/templates/{id}")
++    @PreAuthorize("hasAnyAuthority('CHECKLIST_VIEW','CHECKLIST_ADMIN')")
++    public ApiResponse<ChecklistDtos.TemplateResponse> template(@PathVariable UUID id) {
++        return ApiResponse.success(checklistService.getTemplate(id));
++    }
++
++    @GetMapping("/category/{categoryId}/template")
++    @PreAuthorize("hasAnyAuthority('CHECKLIST_VIEW','CHECKLIST_UPLOAD','DIARY_CREATE')")
++    public ApiResponse<ChecklistDtos.TemplateResponse> templateForCategory(@PathVariable UUID categoryId) {
++        return ApiResponse.success(checklistService.getTemplateForCategory(categoryId).orElse(null));
++    }
++
++    @PostMapping("/templates")
++    @PreAuthorize("hasAuthority('CHECKLIST_ADMIN')")
++    public ApiResponse<ChecklistDtos.TemplateResponse> createTemplate(
++            @Valid @RequestBody ChecklistDtos.TemplateRequest request) {
++        return ApiResponse.success("Checklist template created", checklistService.createTemplate(request));
++    }
++
++    @PutMapping("/templates/{id}")
++    @PreAuthorize("hasAuthority('CHECKLIST_ADMIN')")
++    public ApiResponse<ChecklistDtos.TemplateResponse> updateTemplate(
++            @PathVariable UUID id, @Valid @RequestBody ChecklistDtos.TemplateRequest request) {
++        return ApiResponse.success("Checklist template updated", checklistService.updateTemplate(id, request));
++    }
++
++    @DeleteMapping("/templates/{id}")
++    @PreAuthorize("hasAuthority('CHECKLIST_ADMIN')")
++    public ApiResponse<Void> deleteTemplate(@PathVariable UUID id) {
++        checklistService.deleteTemplate(id);
++        return ApiResponse.successMessage("Checklist template deleted");
++    }
++
++    @GetMapping("/mappings")
++    @PreAuthorize("hasAuthority('CHECKLIST_ADMIN')")
++    public ApiResponse<List<ChecklistDtos.MappingResponse>> mappings() {
++        return ApiResponse.success(checklistService.getMappings());
++    }
++
++    @PostMapping("/mappings")
++    @PreAuthorize("hasAuthority('CHECKLIST_ADMIN')")
++    public ApiResponse<ChecklistDtos.MappingResponse> saveMapping(
++            @Valid @RequestBody ChecklistDtos.MappingRequest request) {
++        return ApiResponse.success("Category checklist mapping saved", checklistService.saveMapping(request));
++    }
++
++    @DeleteMapping("/mappings/category/{categoryId}")
++    @PreAuthorize("hasAuthority('CHECKLIST_ADMIN')")
++    public ApiResponse<Void> deleteMapping(@PathVariable UUID categoryId) {
++        checklistService.deleteMapping(categoryId);
++        return ApiResponse.successMessage("Category checklist mapping removed");
++    }
++
++    @GetMapping("/diary/{diaryId}")
++    @PreAuthorize("hasAuthority('CHECKLIST_VIEW')")
++    public ApiResponse<ChecklistDtos.InstanceResponse> forDiary(@PathVariable UUID diaryId) {
++        return ApiResponse.success(checklistService.getForDiary(diaryId).orElse(null));
++    }
++
++    @GetMapping("/letter/{letterId}")
++    @PreAuthorize("hasAuthority('CHECKLIST_VIEW')")
++    public ApiResponse<ChecklistDtos.InstanceResponse> forLetter(@PathVariable UUID letterId) {
++        return ApiResponse.success(checklistService.getForLetter(letterId).orElse(null));
++    }
++
++    @Operation(summary = "Upload a document against a checklist item")
++    @PostMapping("/items/{itemId}/attachments")
++    @PreAuthorize("hasAuthority('CHECKLIST_UPLOAD')")
++    public ApiResponse<ChecklistDtos.InstanceResponse> upload(
++            @PathVariable UUID itemId,
++            @RequestParam(required = false) String remarks,
++            @RequestParam("file") MultipartFile file) {
++        return ApiResponse.success("Checklist document uploaded",
++                checklistService.upload(itemId, file, remarks));
++    }
++
++    @PostMapping("/items/{itemId}/verify")
++    @PreAuthorize("hasAuthority('CHECKLIST_VERIFY')")
++    public ApiResponse<ChecklistDtos.InstanceResponse> verify(
++            @PathVariable UUID itemId,
++            @Valid @RequestBody ChecklistDtos.VerificationRequest request) {
++        return ApiResponse.success("Checklist item updated", checklistService.verify(itemId, request));
++    }
++
++    @PostMapping("/instances/{instanceId}/additional-items")
++    @PreAuthorize("hasAuthority('CHECKLIST_VERIFY')")
++    public ApiResponse<ChecklistDtos.InstanceResponse> requestAdditional(
++            @PathVariable UUID instanceId,
++            @Valid @RequestBody ChecklistDtos.AdditionalItemRequest request) {
++        return ApiResponse.success("Additional document requested",
++                checklistService.requestAdditionalItem(instanceId, request));
++    }
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/dto/ChecklistDtos.java b/src/main/java/com/bor/eboard/checklist/dto/ChecklistDtos.java
+new file mode 100644
+index 0000000..a67d1f8
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/dto/ChecklistDtos.java
+@@ -0,0 +1,217 @@
++package com.bor.eboard.checklist.dto;
++
++import jakarta.validation.Valid;
++import jakarta.validation.constraints.Max;
++import jakarta.validation.constraints.Min;
++import jakarta.validation.constraints.NotBlank;
++import jakarta.validation.constraints.NotNull;
++import jakarta.validation.constraints.Pattern;
++import jakarta.validation.constraints.Size;
++import lombok.AllArgsConstructor;
++import lombok.Builder;
++import lombok.Data;
++import lombok.NoArgsConstructor;
++
++import java.time.LocalDateTime;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.List;
++import java.util.Map;
++import java.util.UUID;
++
++/** DTO namespace for the independent Checklist Engine. */
++public final class ChecklistDtos {
++    private ChecklistDtos() { }
++
++    @Data @NoArgsConstructor @AllArgsConstructor
++    public static class TemplateRequest {
++        @NotBlank @Size(max = 80) private String code;
++        @NotBlank @Size(max = 200) private String name;
++        private String description;
++        private Boolean allowForwardIfIncomplete;
++        private Boolean active;
++        @Valid private List<ItemRequest> items = new ArrayList<>();
++    }
++
++    @Data @NoArgsConstructor @AllArgsConstructor
++    public static class ItemRequest {
++        @NotBlank @Size(max = 200) private String name;
++        private String description;
++        private Boolean mandatory;
++        private Boolean active;
++        @NotNull @Min(1) @Max(10000) private Integer sequence;
++        private Boolean remarksRequired;
++        private Boolean allowMultipleAttachments;
++        @Size(max = 500) private String supportedFileTypes;
++        @Min(1) private Long maximumFileSizeBytes;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class TemplateResponse {
++        private UUID id;
++        private String code;
++        private String name;
++        private String description;
++        private Boolean allowForwardIfIncomplete;
++        private Boolean active;
++        private List<ItemResponse> items;
++        private LocalDateTime createdAt;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class ItemResponse {
++        private UUID id;
++        private UUID templateId;
++        private String name;
++        private String description;
++        private Boolean mandatory;
++        private Boolean active;
++        private Integer sequence;
++        private Boolean remarksRequired;
++        private Boolean allowMultipleAttachments;
++        private String supportedFileTypes;
++        private Long maximumFileSizeBytes;
++    }
++
++    @Data @NoArgsConstructor @AllArgsConstructor
++    public static class MappingRequest {
++        @NotNull private UUID categoryId;
++        @NotNull private UUID templateId;
++        private Boolean active;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class MappingResponse {
++        private UUID id;
++        private UUID categoryId;
++        private String categoryName;
++        private UUID templateId;
++        private String templateName;
++        private Boolean active;
++    }
++
++    @Data @NoArgsConstructor @AllArgsConstructor
++    public static class VerificationRequest {
++        @NotBlank
++        @Pattern(regexp = "VERIFIED|REJECTED|NOT_APPLICABLE|PENDING",
++                message = "Status must be VERIFIED, REJECTED, NOT_APPLICABLE or PENDING")
++        private String status;
++        private String remarks;
++    }
++
++    @Data @NoArgsConstructor @AllArgsConstructor
++    public static class AdditionalItemRequest {
++        @NotBlank @Size(max = 200) private String name;
++        private String description;
++        private Boolean mandatory;
++        private Boolean remarksRequired;
++        private Boolean allowMultipleAttachments;
++        @Size(max = 500) private String supportedFileTypes;
++        @Min(1) private Long maximumFileSizeBytes;
++        private String remarks;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class AttachmentResponse {
++        private UUID id;
++        private String originalFileName;
++        private String fileExtension;
++        private String mimeType;
++        private Long fileSize;
++        private String checksum;
++        private UUID uploadedBy;
++        private String uploadedByName;
++        private LocalDateTime uploadedAt;
++        private String downloadUrl;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class InstanceItemResponse {
++        private UUID id;
++        private UUID templateItemId;
++        private String name;
++        private String description;
++        private Boolean mandatory;
++        private Integer sequence;
++        private Boolean remarksRequired;
++        private Boolean allowMultipleAttachments;
++        private String supportedFileTypes;
++        private Long maximumFileSizeBytes;
++        private String status;
++        private UUID uploadedBy;
++        private String uploadedByName;
++        private LocalDateTime uploadedAt;
++        private UUID verifiedBy;
++        private String verifiedByName;
++        private LocalDateTime verifiedAt;
++        private UUID requestedBy;
++        private String requestedByName;
++        private LocalDateTime requestedAt;
++        private String remarks;
++        private List<AttachmentResponse> attachments;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class Summary {
++        private UUID instanceId;
++        private UUID templateId;
++        private String templateName;
++        private String status;
++        private long totalItems;
++        private long completedItems;
++        private long uploadedItems;
++        private long pendingVerification;
++        private long missingMandatory;
++        private boolean complete;
++        private boolean forwardOverrideUsed;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class InstanceResponse {
++        private UUID id;
++        private UUID templateId;
++        private String templateName;
++        private String templateDescription;
++        private UUID categoryId;
++        private String categoryName;
++        private UUID diaryEntryId;
++        private UUID letterId;
++        private String status;
++        private Boolean allowForwardIfIncomplete;
++        private UUID forwardOverrideBy;
++        private String forwardOverrideByName;
++        private LocalDateTime forwardOverrideAt;
++        private String forwardOverrideRemarks;
++        private LocalDateTime completedAt;
++        private LocalDateTime createdAt;
++        private Summary summary;
++        private List<InstanceItemResponse> items;
++        private List<TimelineEvent> timeline;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class TimelineEvent {
++        private LocalDateTime timestamp;
++        private String action;
++        private String title;
++        private String detail;
++        private UUID itemId;
++        private UUID userId;
++        private String userName;
++    }
++
++    @Data @Builder @NoArgsConstructor @AllArgsConstructor
++    public static class DashboardSummary {
++        private long totalChecklists;
++        private long complete;
++        private long incomplete;
++        private long forwardedWithExceptions;
++        private long pendingVerification;
++        private long lettersWithMissingDocuments;
++        private double compliancePercent;
++        @Builder.Default private Map<String, Long> incompleteByCategory = new LinkedHashMap<>();
++        @Builder.Default private Map<String, Double> complianceByDepartment = new LinkedHashMap<>();
++        @Builder.Default private Map<String, Double> complianceBySection = new LinkedHashMap<>();
++        @Builder.Default private Map<String, Double> complianceByCategory = new LinkedHashMap<>();
++    }
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/entity/ChecklistInstance.java b/src/main/java/com/bor/eboard/checklist/entity/ChecklistInstance.java
+new file mode 100644
+index 0000000..4d399bf
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/entity/ChecklistInstance.java
+@@ -0,0 +1,38 @@
++package com.bor.eboard.checklist.entity;
++
++import com.bor.eboard.common.entity.BaseEntity;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Table;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++
++import java.time.LocalDateTime;
++import java.util.UUID;
++
++@Getter
++@Setter
++@NoArgsConstructor
++@Entity
++@Table(name = "checklist_instances")
++public class ChecklistInstance extends BaseEntity {
++    @Column(name = "checklist_template_id", nullable = false)
++    private UUID checklistTemplateId;
++    @Column(name = "category_id", nullable = false)
++    private UUID categoryId;
++    @Column(name = "diary_entry_id")
++    private UUID diaryEntryId;
++    @Column(name = "letter_id")
++    private UUID letterId;
++    @Column(name = "status", nullable = false, length = 50)
++    private String status;
++    @Column(name = "completed_at")
++    private LocalDateTime completedAt;
++    @Column(name = "forward_override_by")
++    private UUID forwardOverrideBy;
++    @Column(name = "forward_override_at")
++    private LocalDateTime forwardOverrideAt;
++    @Column(name = "forward_override_remarks")
++    private String forwardOverrideRemarks;
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/entity/ChecklistInstanceItem.java b/src/main/java/com/bor/eboard/checklist/entity/ChecklistInstanceItem.java
+new file mode 100644
+index 0000000..58159fb
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/entity/ChecklistInstanceItem.java
+@@ -0,0 +1,58 @@
++package com.bor.eboard.checklist.entity;
++
++import com.bor.eboard.common.entity.BaseEntity;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Table;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++
++import java.time.LocalDateTime;
++import java.util.UUID;
++
++@Getter
++@Setter
++@NoArgsConstructor
++@Entity
++@Table(name = "checklist_instance_items")
++public class ChecklistInstanceItem extends BaseEntity {
++    @Column(name = "checklist_instance_id", nullable = false)
++    private UUID checklistInstanceId;
++    @Column(name = "checklist_item_id")
++    private UUID checklistItemId;
++    @Column(name = "item_name", nullable = false, length = 200)
++    private String itemName;
++    @Column(name = "description")
++    private String description;
++    @Column(name = "mandatory", nullable = false)
++    private Boolean mandatory = Boolean.FALSE;
++    @Column(name = "sequence_no", nullable = false)
++    private Integer sequence;
++    @Column(name = "remarks_required", nullable = false)
++    private Boolean remarksRequired = Boolean.FALSE;
++    @Column(name = "allow_multiple_attachments", nullable = false)
++    private Boolean allowMultipleAttachments = Boolean.FALSE;
++    @Column(name = "supported_file_types", length = 500)
++    private String supportedFileTypes;
++    @Column(name = "maximum_file_size_bytes")
++    private Long maximumFileSizeBytes;
++    @Column(name = "status", nullable = false, length = 50)
++    private String status;
++    @Column(name = "uploaded_by")
++    private UUID uploadedBy;
++    @Column(name = "uploaded_at")
++    private LocalDateTime uploadedAt;
++    @Column(name = "verified_by")
++    private UUID verifiedBy;
++    @Column(name = "verified_at")
++    private LocalDateTime verifiedAt;
++    @Column(name = "requested_by")
++    private UUID requestedBy;
++    @Column(name = "requested_at")
++    private LocalDateTime requestedAt;
++    @Column(name = "remarks")
++    private String remarks;
++    @Column(name = "active", nullable = false)
++    private Boolean active = Boolean.TRUE;
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/entity/ChecklistItem.java b/src/main/java/com/bor/eboard/checklist/entity/ChecklistItem.java
+new file mode 100644
+index 0000000..a60f8a4
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/entity/ChecklistItem.java
+@@ -0,0 +1,39 @@
++package com.bor.eboard.checklist.entity;
++
++import com.bor.eboard.common.entity.BaseEntity;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Table;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++
++import java.util.UUID;
++
++@Getter
++@Setter
++@NoArgsConstructor
++@Entity
++@Table(name = "checklist_items")
++public class ChecklistItem extends BaseEntity {
++    @Column(name = "checklist_template_id", nullable = false)
++    private UUID checklistTemplateId;
++    @Column(name = "item_name", nullable = false, length = 200)
++    private String itemName;
++    @Column(name = "description")
++    private String description;
++    @Column(name = "mandatory", nullable = false)
++    private Boolean mandatory = Boolean.FALSE;
++    @Column(name = "active", nullable = false)
++    private Boolean active = Boolean.TRUE;
++    @Column(name = "sequence_no", nullable = false)
++    private Integer sequence;
++    @Column(name = "remarks_required", nullable = false)
++    private Boolean remarksRequired = Boolean.FALSE;
++    @Column(name = "allow_multiple_attachments", nullable = false)
++    private Boolean allowMultipleAttachments = Boolean.FALSE;
++    @Column(name = "supported_file_types", length = 500)
++    private String supportedFileTypes;
++    @Column(name = "maximum_file_size_bytes")
++    private Long maximumFileSizeBytes;
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/entity/ChecklistTemplate.java b/src/main/java/com/bor/eboard/checklist/entity/ChecklistTemplate.java
+new file mode 100644
+index 0000000..c03579d
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/entity/ChecklistTemplate.java
+@@ -0,0 +1,27 @@
++package com.bor.eboard.checklist.entity;
++
++import com.bor.eboard.common.entity.BaseEntity;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Table;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++
++@Getter
++@Setter
++@NoArgsConstructor
++@Entity
++@Table(name = "checklist_templates")
++public class ChecklistTemplate extends BaseEntity {
++    @Column(name = "code", nullable = false, unique = true, length = 80)
++    private String code;
++    @Column(name = "name", nullable = false, length = 200)
++    private String name;
++    @Column(name = "description")
++    private String description;
++    @Column(name = "allow_forward_if_incomplete", nullable = false)
++    private Boolean allowForwardIfIncomplete = Boolean.FALSE;
++    @Column(name = "active", nullable = false)
++    private Boolean active = Boolean.TRUE;
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/entity/LetterCategoryChecklist.java b/src/main/java/com/bor/eboard/checklist/entity/LetterCategoryChecklist.java
+new file mode 100644
+index 0000000..32de759
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/entity/LetterCategoryChecklist.java
+@@ -0,0 +1,25 @@
++package com.bor.eboard.checklist.entity;
++
++import com.bor.eboard.common.entity.BaseEntity;
++import jakarta.persistence.Column;
++import jakarta.persistence.Entity;
++import jakarta.persistence.Table;
++import lombok.Getter;
++import lombok.NoArgsConstructor;
++import lombok.Setter;
++
++import java.util.UUID;
++
++@Getter
++@Setter
++@NoArgsConstructor
++@Entity
++@Table(name = "letter_category_checklists")
++public class LetterCategoryChecklist extends BaseEntity {
++    @Column(name = "category_id", nullable = false)
++    private UUID categoryId;
++    @Column(name = "checklist_template_id", nullable = false)
++    private UUID checklistTemplateId;
++    @Column(name = "active", nullable = false)
++    private Boolean active = Boolean.TRUE;
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/repository/ChecklistInstanceItemRepository.java b/src/main/java/com/bor/eboard/checklist/repository/ChecklistInstanceItemRepository.java
+new file mode 100644
+index 0000000..83edd60
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/repository/ChecklistInstanceItemRepository.java
+@@ -0,0 +1,16 @@
++package com.bor.eboard.checklist.repository;
++
++import com.bor.eboard.checklist.entity.ChecklistInstanceItem;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.stereotype.Repository;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.UUID;
++
++@Repository
++public interface ChecklistInstanceItemRepository extends JpaRepository<ChecklistInstanceItem, UUID> {
++    Optional<ChecklistInstanceItem> findByIdAndDeletedFalse(UUID id);
++    List<ChecklistInstanceItem> findByChecklistInstanceIdAndActiveTrueAndDeletedFalseOrderBySequenceAsc(UUID instanceId);
++    List<ChecklistInstanceItem> findByChecklistInstanceIdAndDeletedFalseOrderBySequenceAsc(UUID instanceId);
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/repository/ChecklistInstanceRepository.java b/src/main/java/com/bor/eboard/checklist/repository/ChecklistInstanceRepository.java
+new file mode 100644
+index 0000000..c08302f
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/repository/ChecklistInstanceRepository.java
+@@ -0,0 +1,51 @@
++package com.bor.eboard.checklist.repository;
++
++import com.bor.eboard.checklist.entity.ChecklistInstance;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.repository.query.Param;
++import org.springframework.stereotype.Repository;
++
++import java.util.Collection;
++import java.util.List;
++import java.util.Optional;
++import java.util.UUID;
++
++@Repository
++public interface ChecklistInstanceRepository extends JpaRepository<ChecklistInstance, UUID> {
++    Optional<ChecklistInstance> findByIdAndDeletedFalse(UUID id);
++    Optional<ChecklistInstance> findByDiaryEntryIdAndDeletedFalse(UUID diaryEntryId);
++    Optional<ChecklistInstance> findByLetterIdAndDeletedFalse(UUID letterId);
++    List<ChecklistInstance> findByDeletedFalseOrderByCreatedAtDesc();
++    boolean existsByChecklistTemplateIdAndDeletedFalse(UUID templateId);
++
++    @Query("""
++            SELECT ci FROM ChecklistInstance ci
++            WHERE ci.deleted = FALSE
++              AND ((ci.letterId IS NOT NULL AND EXISTS (
++                    SELECT l.id FROM Letter l
++                    WHERE l.id = ci.letterId AND l.deleted = FALSE
++                      AND l.currentOwnerId = :ownerId))
++                OR (ci.letterId IS NULL AND ci.diaryEntryId IS NOT NULL AND EXISTS (
++                    SELECT d.id FROM DiaryEntry d
++                    WHERE d.id = ci.diaryEntryId AND d.deleted = FALSE
++                      AND d.receivedBy = :ownerId)))
++            ORDER BY ci.createdAt DESC
++            """)
++    List<ChecklistInstance> findForOwner(@Param("ownerId") UUID ownerId);
++
++    @Query("""
++            SELECT ci FROM ChecklistInstance ci
++            WHERE ci.deleted = FALSE
++              AND ((ci.letterId IS NOT NULL AND EXISTS (
++                    SELECT l.id FROM Letter l
++                    WHERE l.id = ci.letterId AND l.deleted = FALSE
++                      AND l.currentSectionId IN :sectionIds))
++                OR (ci.letterId IS NULL AND ci.diaryEntryId IS NOT NULL AND EXISTS (
++                    SELECT d.id FROM DiaryEntry d
++                    WHERE d.id = ci.diaryEntryId AND d.deleted = FALSE
++                      AND d.initialSectionId IN :sectionIds)))
++            ORDER BY ci.createdAt DESC
++            """)
++    List<ChecklistInstance> findForSections(@Param("sectionIds") Collection<UUID> sectionIds);
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/repository/ChecklistItemRepository.java b/src/main/java/com/bor/eboard/checklist/repository/ChecklistItemRepository.java
+new file mode 100644
+index 0000000..1b2d056
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/repository/ChecklistItemRepository.java
+@@ -0,0 +1,16 @@
++package com.bor.eboard.checklist.repository;
++
++import com.bor.eboard.checklist.entity.ChecklistItem;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.stereotype.Repository;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.UUID;
++
++@Repository
++public interface ChecklistItemRepository extends JpaRepository<ChecklistItem, UUID> {
++    Optional<ChecklistItem> findByIdAndDeletedFalse(UUID id);
++    List<ChecklistItem> findByChecklistTemplateIdAndDeletedFalseOrderBySequenceAsc(UUID checklistTemplateId);
++    List<ChecklistItem> findByChecklistTemplateIdAndActiveTrueAndDeletedFalseOrderBySequenceAsc(UUID checklistTemplateId);
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/repository/ChecklistTemplateRepository.java b/src/main/java/com/bor/eboard/checklist/repository/ChecklistTemplateRepository.java
+new file mode 100644
+index 0000000..3af8097
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/repository/ChecklistTemplateRepository.java
+@@ -0,0 +1,17 @@
++package com.bor.eboard.checklist.repository;
++
++import com.bor.eboard.checklist.entity.ChecklistTemplate;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.stereotype.Repository;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.UUID;
++
++@Repository
++public interface ChecklistTemplateRepository extends JpaRepository<ChecklistTemplate, UUID> {
++    Optional<ChecklistTemplate> findByIdAndDeletedFalse(UUID id);
++    Optional<ChecklistTemplate> findByCodeAndDeletedFalse(String code);
++    boolean existsByCodeAndDeletedFalse(String code);
++    List<ChecklistTemplate> findByDeletedFalseOrderByNameAsc();
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/repository/LetterCategoryChecklistRepository.java b/src/main/java/com/bor/eboard/checklist/repository/LetterCategoryChecklistRepository.java
+new file mode 100644
+index 0000000..56b0fb3
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/repository/LetterCategoryChecklistRepository.java
+@@ -0,0 +1,16 @@
++package com.bor.eboard.checklist.repository;
++
++import com.bor.eboard.checklist.entity.LetterCategoryChecklist;
++import org.springframework.data.jpa.repository.JpaRepository;
++import org.springframework.stereotype.Repository;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.UUID;
++
++@Repository
++public interface LetterCategoryChecklistRepository extends JpaRepository<LetterCategoryChecklist, UUID> {
++    Optional<LetterCategoryChecklist> findByCategoryIdAndDeletedFalse(UUID categoryId);
++    Optional<LetterCategoryChecklist> findByCategoryIdAndActiveTrueAndDeletedFalse(UUID categoryId);
++    List<LetterCategoryChecklist> findByDeletedFalseOrderByCreatedAtDesc();
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/service/ChecklistService.java b/src/main/java/com/bor/eboard/checklist/service/ChecklistService.java
+new file mode 100644
+index 0000000..09e7372
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/service/ChecklistService.java
+@@ -0,0 +1,45 @@
++package com.bor.eboard.checklist.service;
++
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++import org.springframework.web.multipart.MultipartFile;
++
++import java.util.List;
++import java.util.Optional;
++import java.util.UUID;
++
++public interface ChecklistService {
++    List<ChecklistDtos.TemplateResponse> getTemplates();
++    ChecklistDtos.TemplateResponse getTemplate(UUID id);
++    Optional<ChecklistDtos.TemplateResponse> getTemplateForCategory(UUID categoryId);
++    ChecklistDtos.TemplateResponse createTemplate(ChecklistDtos.TemplateRequest request);
++    ChecklistDtos.TemplateResponse updateTemplate(UUID id, ChecklistDtos.TemplateRequest request);
++    void deleteTemplate(UUID id);
++
++    List<ChecklistDtos.MappingResponse> getMappings();
++    ChecklistDtos.MappingResponse saveMapping(ChecklistDtos.MappingRequest request);
++    void deleteMapping(UUID categoryId);
++
++    void syncForDiary(UUID diaryId, UUID categoryId);
++    void linkDiaryToLetter(UUID diaryId, UUID letterId);
++
++    Optional<ChecklistDtos.InstanceResponse> getForDiary(UUID diaryId);
++    Optional<ChecklistDtos.InstanceResponse> getForLetter(UUID letterId);
++    Optional<ChecklistDtos.Summary> getSummaryForDiary(UUID diaryId);
++    Optional<ChecklistDtos.Summary> getSummaryForLetter(UUID letterId);
++
++    ChecklistDtos.InstanceResponse upload(UUID instanceItemId, MultipartFile file, String remarks);
++    ChecklistDtos.InstanceResponse verify(UUID instanceItemId, ChecklistDtos.VerificationRequest request);
++    ChecklistDtos.InstanceResponse requestAdditionalItem(UUID instanceId,
++                                                          ChecklistDtos.AdditionalItemRequest request);
++
++    void validateDiaryForward(UUID diaryId, boolean override, String overrideRemarks);
++    void validateLetterForward(UUID letterId, boolean override, String overrideRemarks);
++
++    List<UUID> matchingDiaryIds(UUID templateId, String status, Boolean complete,
++                                Boolean missingMandatory);
++    List<UUID> matchingLetterIds(UUID templateId, String status, Boolean complete,
++                                 Boolean missingMandatory);
++
++    ChecklistDtos.DashboardSummary dashboard(UUID ownerId, List<UUID> sectionIds,
++                                              boolean organizationWide);
++}
+diff --git a/src/main/java/com/bor/eboard/checklist/service/impl/ChecklistServiceImpl.java b/src/main/java/com/bor/eboard/checklist/service/impl/ChecklistServiceImpl.java
+new file mode 100644
+index 0000000..29b755f
+--- /dev/null
++++ b/src/main/java/com/bor/eboard/checklist/service/impl/ChecklistServiceImpl.java
+@@ -0,0 +1,827 @@
++package com.bor.eboard.checklist.service.impl;
++
++import com.bor.eboard.admin.facade.MasterDataFacade;
++import com.bor.eboard.audit.repository.AuditLogRepository;
++import com.bor.eboard.audit.service.AuditService;
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++import com.bor.eboard.checklist.entity.ChecklistInstance;
++import com.bor.eboard.checklist.entity.ChecklistInstanceItem;
++import com.bor.eboard.checklist.entity.ChecklistItem;
++import com.bor.eboard.checklist.entity.ChecklistTemplate;
++import com.bor.eboard.checklist.entity.LetterCategoryChecklist;
++import com.bor.eboard.checklist.repository.ChecklistInstanceItemRepository;
++import com.bor.eboard.checklist.repository.ChecklistInstanceRepository;
++import com.bor.eboard.checklist.repository.ChecklistItemRepository;
++import com.bor.eboard.checklist.repository.ChecklistTemplateRepository;
++import com.bor.eboard.checklist.repository.LetterCategoryChecklistRepository;
++import com.bor.eboard.checklist.service.ChecklistService;
++import com.bor.eboard.common.exception.BusinessException;
++import com.bor.eboard.common.exception.DuplicateResourceException;
++import com.bor.eboard.common.exception.ForbiddenException;
++import com.bor.eboard.common.exception.ResourceNotFoundException;
++import com.bor.eboard.common.exception.UnauthorizedException;
++import com.bor.eboard.common.exception.ValidationException;
++import com.bor.eboard.common.util.SecurityUtils;
++import com.bor.eboard.correspondence.entity.Attachment;
++import com.bor.eboard.correspondence.entity.Letter;
++import com.bor.eboard.correspondence.repository.AttachmentRepository;
++import com.bor.eboard.correspondence.repository.LetterRepository;
++import com.bor.eboard.filestorage.service.AttachmentStorageService;
++import com.bor.eboard.identity.facade.IdentityFacade;
++import com.bor.eboard.registry.entity.DiaryEntry;
++import com.bor.eboard.registry.repository.DiaryEntryRepository;
++import lombok.RequiredArgsConstructor;
++import org.springframework.stereotype.Service;
++import org.springframework.transaction.annotation.Transactional;
++import org.springframework.util.StringUtils;
++import org.springframework.web.multipart.MultipartFile;
++
++import java.time.LocalDateTime;
++import java.util.ArrayList;
++import java.util.LinkedHashMap;
++import java.util.LinkedHashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.Map;
++import java.util.Objects;
++import java.util.Optional;
++import java.util.Set;
++import java.util.UUID;
++import java.util.function.Function;
++import java.util.stream.Collectors;
++
++@Service
++@RequiredArgsConstructor
++public class ChecklistServiceImpl implements ChecklistService {
++
++    private static final String MODULE = "CHECKLIST";
++    private static final String ENTITY_INSTANCE = "CHECKLIST_INSTANCE";
++    private static final Set<String> VALID_ITEM_STATUSES =
++            Set.of("PENDING", "UPLOADED", "VERIFIED", "REJECTED", "NOT_APPLICABLE");
++    private static final Set<String> FORWARD_READY =
++            Set.of("UPLOADED", "VERIFIED", "NOT_APPLICABLE");
++
++    private final ChecklistTemplateRepository templateRepository;
++    private final ChecklistItemRepository itemRepository;
++    private final LetterCategoryChecklistRepository mappingRepository;
++    private final ChecklistInstanceRepository instanceRepository;
++    private final ChecklistInstanceItemRepository instanceItemRepository;
++    private final AttachmentRepository attachmentRepository;
++    private final AttachmentStorageService attachmentStorageService;
++    private final AuditLogRepository auditLogRepository;
++    private final AuditService auditService;
++    private final MasterDataFacade masterDataFacade;
++    private final IdentityFacade identityFacade;
++    private final DiaryEntryRepository diaryRepository;
++    private final LetterRepository letterRepository;
++
++    @Override
++    @Transactional(readOnly = true)
++    public List<ChecklistDtos.TemplateResponse> getTemplates() {
++        return templateRepository.findByDeletedFalseOrderByNameAsc().stream()
++                .map(this::toTemplateResponse)
++                .toList();
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public ChecklistDtos.TemplateResponse getTemplate(UUID id) {
++        return toTemplateResponse(findTemplate(id));
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public Optional<ChecklistDtos.TemplateResponse> getTemplateForCategory(UUID categoryId) {
++        return mappedTemplate(categoryId).map(this::toTemplateResponse);
++    }
++
++    @Override
++    @Transactional
++    public ChecklistDtos.TemplateResponse createTemplate(ChecklistDtos.TemplateRequest request) {
++        requireAuthority("CHECKLIST_ADMIN");
++        String code = normalizeCode(request.getCode());
++        if (templateRepository.existsByCodeAndDeletedFalse(code)) {
++            throw new DuplicateResourceException("Checklist template code already exists: " + code);
++        }
++        ChecklistTemplate template = new ChecklistTemplate();
++        applyTemplate(template, request, code);
++        template = templateRepository.save(template);
++        saveTemplateItems(template.getId(), request.getItems());
++        auditService.record(MODULE, "CHECKLIST_TEMPLATE", template.getId(),
++                "CREATE", null, template.getName());
++        return toTemplateResponse(template);
++    }
++
++    @Override
++    @Transactional
++    public ChecklistDtos.TemplateResponse updateTemplate(UUID id, ChecklistDtos.TemplateRequest request) {
++        requireAuthority("CHECKLIST_ADMIN");
++        ChecklistTemplate template = findTemplate(id);
++        String code = normalizeCode(request.getCode());
++        templateRepository.findByCodeAndDeletedFalse(code)
++                .filter(other -> !other.getId().equals(id))
++                .ifPresent(other -> {
++                    throw new DuplicateResourceException("Checklist template code already exists: " + code);
++                });
++        String old = template.getName();
++        applyTemplate(template, request, code);
++        templateRepository.save(template);
++
++        List<ChecklistItem> existing = itemRepository
++                .findByChecklistTemplateIdAndDeletedFalseOrderBySequenceAsc(id);
++        existing.forEach(item -> item.setDeleted(Boolean.TRUE));
++        itemRepository.saveAll(existing);
++        saveTemplateItems(id, request.getItems());
++
++        auditService.record(MODULE, "CHECKLIST_TEMPLATE", id,
++                "UPDATE", old, template.getName());
++        return toTemplateResponse(template);
++    }
++
++    @Override
++    @Transactional
++    public void deleteTemplate(UUID id) {
++        requireAuthority("CHECKLIST_ADMIN");
++        ChecklistTemplate template = findTemplate(id);
++        if (instanceRepository.existsByChecklistTemplateIdAndDeletedFalse(id)) {
++            throw new BusinessException("Checklist template is already used by a diary/letter and cannot be deleted");
++        }
++        template.setDeleted(Boolean.TRUE);
++        templateRepository.save(template);
++        mappingRepository.findByDeletedFalseOrderByCreatedAtDesc().stream()
++                .filter(m -> id.equals(m.getChecklistTemplateId()))
++                .forEach(m -> {
++                    m.setDeleted(Boolean.TRUE);
++                    mappingRepository.save(m);
++                });
++        auditService.record(MODULE, "CHECKLIST_TEMPLATE", id, "DELETE", template.getName(), null);
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public List<ChecklistDtos.MappingResponse> getMappings() {
++        Map<UUID, String> categories = masterDataFacade.categoryNames();
++        Map<UUID, String> templates = templateRepository.findByDeletedFalseOrderByNameAsc().stream()
++                .collect(Collectors.toMap(ChecklistTemplate::getId, ChecklistTemplate::getName));
++        return mappingRepository.findByDeletedFalseOrderByCreatedAtDesc().stream()
++                .map(m -> ChecklistDtos.MappingResponse.builder()
++                        .id(m.getId())
++                        .categoryId(m.getCategoryId())
++                        .categoryName(categories.get(m.getCategoryId()))
++                        .templateId(m.getChecklistTemplateId())
++                        .templateName(templates.get(m.getChecklistTemplateId()))
++                        .active(m.getActive())
++                        .build())
++                .toList();
++    }
++
++    @Override
++    @Transactional
++    public ChecklistDtos.MappingResponse saveMapping(ChecklistDtos.MappingRequest request) {
++        requireAuthority("CHECKLIST_ADMIN");
++        if (!masterDataFacade.categoryExists(request.getCategoryId())) {
++            throw new ValidationException("Invalid letter category");
++        }
++        ChecklistTemplate template = findTemplate(request.getTemplateId());
++        if (!Boolean.TRUE.equals(template.getActive())) {
++            throw new ValidationException("Inactive checklist template cannot be mapped");
++        }
++        LetterCategoryChecklist mapping = mappingRepository
++                .findByCategoryIdAndDeletedFalse(request.getCategoryId())
++                .orElseGet(LetterCategoryChecklist::new);
++        mapping.setCategoryId(request.getCategoryId());
++        mapping.setChecklistTemplateId(template.getId());
++        mapping.setActive(request.getActive() == null || request.getActive());
++        mapping = mappingRepository.save(mapping);
++        auditService.record(MODULE, "CATEGORY_CHECKLIST", mapping.getId(),
++                "MAP", null, "categoryId=" + request.getCategoryId() + ", templateId=" + template.getId());
++        Map<UUID, String> categories = masterDataFacade.categoryNames();
++        return ChecklistDtos.MappingResponse.builder()
++                .id(mapping.getId()).categoryId(mapping.getCategoryId())
++                .categoryName(categories.get(mapping.getCategoryId()))
++                .templateId(template.getId()).templateName(template.getName())
++                .active(mapping.getActive()).build();
++    }
++
++    @Override
++    @Transactional
++    public void deleteMapping(UUID categoryId) {
++        requireAuthority("CHECKLIST_ADMIN");
++        LetterCategoryChecklist mapping = mappingRepository.findByCategoryIdAndDeletedFalse(categoryId)
++                .orElseThrow(() -> new ResourceNotFoundException("Checklist category mapping", categoryId));
++        mapping.setDeleted(Boolean.TRUE);
++        mappingRepository.save(mapping);
++        auditService.record(MODULE, "CATEGORY_CHECKLIST", mapping.getId(),
++                "UNMAP", "categoryId=" + categoryId, null);
++    }
++
++    @Override
++    @Transactional
++    public void syncForDiary(UUID diaryId, UUID categoryId) {
++        Optional<ChecklistTemplate> mapped = mappedTemplate(categoryId);
++        Optional<ChecklistInstance> existing = instanceRepository.findByDiaryEntryIdAndDeletedFalse(diaryId);
++
++        if (mapped.isEmpty()) {
++            existing.ifPresent(this::deleteUnusedInstance);
++            return;
++        }
++        ChecklistTemplate template = mapped.get();
++        if (existing.isPresent() && template.getId().equals(existing.get().getChecklistTemplateId())) {
++            ChecklistInstance instance = existing.get();
++            if (!Objects.equals(categoryId, instance.getCategoryId())) {
++                instance.setCategoryId(categoryId);
++                instanceRepository.save(instance);
++            }
++            return;
++        }
++        existing.ifPresent(this::deleteUnusedInstance);
++
++        ChecklistInstance instance = new ChecklistInstance();
++        instance.setChecklistTemplateId(template.getId());
++        instance.setCategoryId(categoryId);
++        instance.setDiaryEntryId(diaryId);
++        instance.setStatus("INCOMPLETE");
++        instance = instanceRepository.save(instance);
++
++        List<ChecklistInstanceItem> snapshots = itemRepository
++                .findByChecklistTemplateIdAndActiveTrueAndDeletedFalseOrderBySequenceAsc(template.getId())
++                .stream().map(item -> snapshot(instance.getId(), item)).toList();
++        instanceItemRepository.saveAll(snapshots);
++        refreshStatus(instance);
++        recordInstanceEvent(instance.getId(), "CREATED", null,
++                template.getName() + " loaded automatically");
++    }
++
++    @Override
++    @Transactional
++    public void linkDiaryToLetter(UUID diaryId, UUID letterId) {
++        instanceRepository.findByDiaryEntryIdAndDeletedFalse(diaryId).ifPresent(instance -> {
++            instance.setLetterId(letterId);
++            instanceRepository.save(instance);
++            recordInstanceEvent(instance.getId(), "LINKED_TO_LETTER", null,
++                    "Checklist linked to generated letter " + letterId);
++        });
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public Optional<ChecklistDtos.InstanceResponse> getForDiary(UUID diaryId) {
++        return instanceRepository.findByDiaryEntryIdAndDeletedFalse(diaryId).map(this::toInstanceResponse);
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public Optional<ChecklistDtos.InstanceResponse> getForLetter(UUID letterId) {
++        return instanceRepository.findByLetterIdAndDeletedFalse(letterId).map(this::toInstanceResponse);
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public Optional<ChecklistDtos.Summary> getSummaryForDiary(UUID diaryId) {
++        return instanceRepository.findByDiaryEntryIdAndDeletedFalse(diaryId).map(this::toSummary);
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public Optional<ChecklistDtos.Summary> getSummaryForLetter(UUID letterId) {
++        return instanceRepository.findByLetterIdAndDeletedFalse(letterId).map(this::toSummary);
++    }
++
++    @Override
++    @Transactional
++    public ChecklistDtos.InstanceResponse upload(UUID instanceItemId, MultipartFile file, String remarks) {
++        requireAuthority("CHECKLIST_UPLOAD");
++        ChecklistInstanceItem item = findInstanceItem(instanceItemId);
++        ChecklistInstance instance = findInstance(item.getChecklistInstanceId());
++        if (Boolean.TRUE.equals(item.getRemarksRequired()) && !StringUtils.hasText(remarks)) {
++            throw new ValidationException("Remarks are required for " + item.getItemName());
++        }
++        validateFile(item, file);
++        boolean replacingRejected = "REJECTED".equals(item.getStatus());
++        if (!Boolean.TRUE.equals(item.getAllowMultipleAttachments()) && !replacingRejected
++                && attachmentRepository.countByChecklistInstanceItemIdAndActiveTrueAndDeletedFalse(item.getId()) > 0) {
++            throw new ValidationException("Only one attachment is allowed for " + item.getItemName());
++        }
++        String linkedType = instance.getLetterId() != null ? "LETTER" : "DIARY";
++        UUID linkedId = instance.getLetterId() != null ? instance.getLetterId() : instance.getDiaryEntryId();
++        attachmentStorageService.store(linkedType, linkedId, null, item.getId(), file);
++
++        UUID userId = currentUserId();
++        item.setStatus("UPLOADED");
++        item.setUploadedBy(userId);
++        item.setUploadedAt(LocalDateTime.now());
++        item.setVerifiedBy(null);
++        item.setVerifiedAt(null);
++        if (StringUtils.hasText(remarks)) {
++            item.setRemarks(remarks.trim());
++        } else if (replacingRejected) {
++            item.setRemarks(null);
++        }
++        instanceItemRepository.save(item);
++        refreshStatus(instance);
++        recordInstanceEvent(instance.getId(), "UPLOADED", item,
++                file.getOriginalFilename() + " uploaded");
++        return toInstanceResponse(instance);
++    }
++
++    @Override
++    @Transactional
++    public ChecklistDtos.InstanceResponse verify(UUID instanceItemId,
++                                                  ChecklistDtos.VerificationRequest request) {
++        requireAuthority("CHECKLIST_VERIFY");
++        ChecklistInstanceItem item = findInstanceItem(instanceItemId);
++        ChecklistInstance instance = findInstance(item.getChecklistInstanceId());
++        String status = request.getStatus().trim().toUpperCase(Locale.ROOT);
++        if (!VALID_ITEM_STATUSES.contains(status) || "UPLOADED".equals(status)) {
++            throw new ValidationException("Invalid verification status");
++        }
++        if ("VERIFIED".equals(status)
++                && attachmentRepository.countByChecklistInstanceItemIdAndActiveTrueAndDeletedFalse(item.getId()) == 0) {
++            throw new ValidationException("Upload a document before verifying " + item.getItemName());
++        }
++        if (("REJECTED".equals(status) || Boolean.TRUE.equals(item.getRemarksRequired()))
++                && !StringUtils.hasText(request.getRemarks())) {
++            throw new ValidationException("Remarks are required");
++        }
++        UUID userId = currentUserId();
++        item.setStatus(status);
++        item.setRemarks(StringUtils.hasText(request.getRemarks()) ? request.getRemarks().trim() : item.getRemarks());
++        if (Set.of("VERIFIED", "REJECTED", "NOT_APPLICABLE").contains(status)) {
++            item.setVerifiedBy(userId);
++            item.setVerifiedAt(LocalDateTime.now());
++        } else {
++            item.setVerifiedBy(null);
++            item.setVerifiedAt(null);
++        }
++        instanceItemRepository.save(item);
++        refreshStatus(instance);
++        recordInstanceEvent(instance.getId(), status, item,
++                item.getRemarks() != null ? item.getRemarks() : item.getItemName());
++        return toInstanceResponse(instance);
++    }
++
++    @Override
++    @Transactional
++    public ChecklistDtos.InstanceResponse requestAdditionalItem(
++            UUID instanceId, ChecklistDtos.AdditionalItemRequest request) {
++        requireAuthority("CHECKLIST_VERIFY");
++        ChecklistInstance instance = findInstance(instanceId);
++        List<ChecklistInstanceItem> current = instanceItemRepository
++                .findByChecklistInstanceIdAndDeletedFalseOrderBySequenceAsc(instanceId);
++        int nextSequence = current.stream().map(ChecklistInstanceItem::getSequence)
++                .filter(Objects::nonNull).max(Integer::compareTo).orElse(0) + 1;
++        ChecklistInstanceItem item = new ChecklistInstanceItem();
++        item.setChecklistInstanceId(instanceId);
++        item.setItemName(request.getName().trim());
++        item.setDescription(blankToNull(request.getDescription()));
++        item.setMandatory(Boolean.TRUE.equals(request.getMandatory()));
++        item.setSequence(nextSequence);
++        item.setRemarksRequired(Boolean.TRUE.equals(request.getRemarksRequired()));
++        item.setAllowMultipleAttachments(Boolean.TRUE.equals(request.getAllowMultipleAttachments()));
++        item.setSupportedFileTypes(normalizeTypes(request.getSupportedFileTypes()));
++        item.setMaximumFileSizeBytes(request.getMaximumFileSizeBytes());
++        item.setStatus("PENDING");
++        item.setRequestedBy(currentUserId());
++        item.setRequestedAt(LocalDateTime.now());
++        item.setRemarks(blankToNull(request.getRemarks()));
++        item.setActive(Boolean.TRUE);
++        item = instanceItemRepository.save(item);
++        refreshStatus(instance);
++        recordInstanceEvent(instance.getId(), "REQUESTED", item,
++                "Additional document requested: " + item.getItemName());
++        return toInstanceResponse(instance);
++    }
++
++    @Override
++    @Transactional
++    public void validateDiaryForward(UUID diaryId, boolean override, String overrideRemarks) {
++        instanceRepository.findByDiaryEntryIdAndDeletedFalse(diaryId)
++                .ifPresent(instance -> validateForward(instance, override, overrideRemarks));
++    }
++
++    @Override
++    @Transactional
++    public void validateLetterForward(UUID letterId, boolean override, String overrideRemarks) {
++        instanceRepository.findByLetterIdAndDeletedFalse(letterId)
++                .ifPresent(instance -> validateForward(instance, override, overrideRemarks));
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public List<UUID> matchingDiaryIds(UUID templateId, String status, Boolean complete,
++                                       Boolean missingMandatory) {
++        return matchingInstances(templateId, status, complete, missingMandatory).stream()
++                .map(ChecklistInstance::getDiaryEntryId).filter(Objects::nonNull).toList();
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public List<UUID> matchingLetterIds(UUID templateId, String status, Boolean complete,
++                                        Boolean missingMandatory) {
++        return matchingInstances(templateId, status, complete, missingMandatory).stream()
++                .map(ChecklistInstance::getLetterId).filter(Objects::nonNull).toList();
++    }
++
++    @Override
++    @Transactional(readOnly = true)
++    public ChecklistDtos.DashboardSummary dashboard(UUID ownerId, List<UUID> sectionIds,
++                                                     boolean organizationWide) {
++        List<ChecklistInstance> instances;
++        if (organizationWide) {
++            instances = instanceRepository.findByDeletedFalseOrderByCreatedAtDesc();
++        } else if (ownerId != null) {
++            instances = instanceRepository.findForOwner(ownerId);
++        } else if (sectionIds != null && !sectionIds.isEmpty()) {
++            instances = instanceRepository.findForSections(sectionIds);
++        } else {
++            instances = List.of();
++        }
++        Map<UUID, String> categories = masterDataFacade.categoryNames();
++        Map<UUID, String> sections = identityFacade.sectionNames();
++        Map<UUID, String> departments = identityFacade.departmentNames();
++
++        List<SummaryRow> rows = instances.stream().map(instance -> {
++            ChecklistDtos.Summary summary = toSummary(instance);
++            UUID sectionId = resolveSectionId(instance);
++            UUID departmentId = sectionId == null ? null
++                    : identityFacade.findSection(sectionId).map(IdentityFacade.SectionRef::departmentId).orElse(null);
++            return new SummaryRow(instance, summary, categories.get(instance.getCategoryId()),
++                    sections.get(sectionId), departments.get(departmentId));
++        }).toList();
++
++        long total = rows.size();
++        long completeCount = rows.stream().filter(r -> r.summary().isComplete()).count();
++        long incompleteCount = rows.stream().filter(r -> !r.summary().isComplete()).count();
++        long exceptions = rows.stream().filter(r -> r.summary().isForwardOverrideUsed()).count();
++        long pending = rows.stream().filter(r -> r.summary().getPendingVerification() > 0).count();
++        long missing = rows.stream().filter(r -> r.instance().getLetterId() != null
++                && r.summary().getMissingMandatory() > 0).count();
++
++        return ChecklistDtos.DashboardSummary.builder()
++                .totalChecklists(total)
++                .complete(completeCount)
++                .incomplete(incompleteCount)
++                .forwardedWithExceptions(exceptions)
++                .pendingVerification(pending)
++                .lettersWithMissingDocuments(missing)
++                .compliancePercent(percent(completeCount, total))
++                .incompleteByCategory(rows.stream().filter(r -> !r.summary().isComplete())
++                        .collect(Collectors.groupingBy(r -> fallback(r.categoryName()), LinkedHashMap::new,
++                                Collectors.counting())))
++                .complianceByDepartment(compliance(rows, SummaryRow::departmentName))
++                .complianceBySection(compliance(rows, SummaryRow::sectionName))
++                .complianceByCategory(compliance(rows, SummaryRow::categoryName))
++                .build();
++    }
++
++    private void validateForward(ChecklistInstance instance, boolean override, String overrideRemarks) {
++        ChecklistDtos.Summary summary = toSummary(instance);
++        if (summary.getMissingMandatory() == 0) return;
++        ChecklistTemplate template = findTemplate(instance.getChecklistTemplateId());
++        if (!Boolean.TRUE.equals(template.getAllowForwardIfIncomplete())) {
++            throw new BusinessException("Forward blocked: " + summary.getMissingMandatory()
++                    + " mandatory checklist document(s) are missing or rejected");
++        }
++        if (!override) {
++            throw new BusinessException("Checklist is incomplete. Confirm override and provide remarks to forward");
++        }
++        requireAuthority("CHECKLIST_OVERRIDE");
++        if (!StringUtils.hasText(overrideRemarks)) {
++            throw new ValidationException("Checklist override remarks are required");
++        }
++        instance.setForwardOverrideBy(currentUserId());
++        instance.setForwardOverrideAt(LocalDateTime.now());
++        instance.setForwardOverrideRemarks(overrideRemarks.trim());
++        instance.setStatus("FORWARDED_WITH_EXCEPTIONS");
++        instanceRepository.save(instance);
++        recordInstanceEvent(instance.getId(), "FORWARD_OVERRIDE", null, overrideRemarks.trim());
++    }
++
++    private List<ChecklistInstance> matchingInstances(UUID templateId, String status,
++                                                        Boolean complete, Boolean missingMandatory) {
++        boolean any = templateId != null || StringUtils.hasText(status)
++                || complete != null || missingMandatory != null;
++        if (!any) return List.of();
++        String normalizedStatus = StringUtils.hasText(status) ? status.trim().toUpperCase(Locale.ROOT) : null;
++        return instanceRepository.findByDeletedFalseOrderByCreatedAtDesc().stream()
++                .filter(i -> templateId == null || templateId.equals(i.getChecklistTemplateId()))
++                .filter(i -> normalizedStatus == null || normalizedStatus.equals(i.getStatus()))
++                .filter(i -> complete == null || complete == toSummary(i).isComplete())
++                .filter(i -> missingMandatory == null
++                        || missingMandatory == (toSummary(i).getMissingMandatory() > 0))
++                .toList();
++    }
++
++    private Optional<ChecklistTemplate> mappedTemplate(UUID categoryId) {
++        if (categoryId == null) return Optional.empty();
++        return mappingRepository.findByCategoryIdAndActiveTrueAndDeletedFalse(categoryId)
++                .flatMap(mapping -> templateRepository.findByIdAndDeletedFalse(mapping.getChecklistTemplateId()))
++                .filter(template -> Boolean.TRUE.equals(template.getActive()));
++    }
++
++    private void deleteUnusedInstance(ChecklistInstance instance) {
++        boolean hasAttachments = instanceItemRepository
++                .findByChecklistInstanceIdAndDeletedFalseOrderBySequenceAsc(instance.getId()).stream()
++                .anyMatch(item -> attachmentRepository
++                        .countByChecklistInstanceItemIdAndActiveTrueAndDeletedFalse(item.getId()) > 0);
++        if (hasAttachments) {
++            throw new BusinessException("Letter category cannot be changed after checklist documents are uploaded");
++        }
++        List<ChecklistInstanceItem> items = instanceItemRepository
++                .findByChecklistInstanceIdAndDeletedFalseOrderBySequenceAsc(instance.getId());
++        items.forEach(item -> item.setDeleted(Boolean.TRUE));
++        instanceItemRepository.saveAll(items);
++        instance.setDeleted(Boolean.TRUE);
++        instanceRepository.save(instance);
++    }
++
++    private void refreshStatus(ChecklistInstance instance) {
++        ChecklistDtos.Summary summary = calculateSummary(instance);
++        if (summary.isComplete()) {
++            instance.setStatus("COMPLETE");
++            if (instance.getCompletedAt() == null) instance.setCompletedAt(LocalDateTime.now());
++        } else if (summary.getMissingMandatory() == 0 && summary.getPendingVerification() > 0) {
++            instance.setStatus("PENDING_VERIFICATION");
++            instance.setCompletedAt(null);
++        } else if (instance.getForwardOverrideAt() != null) {
++            instance.setStatus("FORWARDED_WITH_EXCEPTIONS");
++            instance.setCompletedAt(null);
++        } else {
++            instance.setStatus("INCOMPLETE");
++            instance.setCompletedAt(null);
++        }
++        instanceRepository.save(instance);
++    }
++
++    private ChecklistDtos.TemplateResponse toTemplateResponse(ChecklistTemplate template) {
++        List<ChecklistDtos.ItemResponse> items = itemRepository
++                .findByChecklistTemplateIdAndDeletedFalseOrderBySequenceAsc(template.getId())
++                .stream().map(this::toItemResponse).toList();
++        return ChecklistDtos.TemplateResponse.builder()
++                .id(template.getId()).code(template.getCode()).name(template.getName())
++                .description(template.getDescription())
++                .allowForwardIfIncomplete(template.getAllowForwardIfIncomplete())
++                .active(template.getActive()).items(items).createdAt(template.getCreatedAt()).build();
++    }
++
++    private ChecklistDtos.ItemResponse toItemResponse(ChecklistItem item) {
++        return ChecklistDtos.ItemResponse.builder()
++                .id(item.getId()).templateId(item.getChecklistTemplateId())
++                .name(item.getItemName()).description(item.getDescription())
++                .mandatory(item.getMandatory()).active(item.getActive()).sequence(item.getSequence())
++                .remarksRequired(item.getRemarksRequired())
++                .allowMultipleAttachments(item.getAllowMultipleAttachments())
++                .supportedFileTypes(item.getSupportedFileTypes())
++                .maximumFileSizeBytes(item.getMaximumFileSizeBytes()).build();
++    }
++
++    private ChecklistDtos.InstanceResponse toInstanceResponse(ChecklistInstance instance) {
++        ChecklistTemplate template = findTemplate(instance.getChecklistTemplateId());
++        Map<UUID, String> users = identityFacade.userNames();
++        Map<UUID, String> categories = masterDataFacade.categoryNames();
++        List<ChecklistDtos.InstanceItemResponse> items = instanceItemRepository
++                .findByChecklistInstanceIdAndActiveTrueAndDeletedFalseOrderBySequenceAsc(instance.getId())
++                .stream().map(item -> toInstanceItem(item, users)).toList();
++        return ChecklistDtos.InstanceResponse.builder()
++                .id(instance.getId()).templateId(template.getId()).templateName(template.getName())
++                .templateDescription(template.getDescription()).categoryId(instance.getCategoryId())
++                .categoryName(categories.get(instance.getCategoryId()))
++                .diaryEntryId(instance.getDiaryEntryId()).letterId(instance.getLetterId())
++                .status(instance.getStatus())
++                .allowForwardIfIncomplete(template.getAllowForwardIfIncomplete())
++                .forwardOverrideBy(instance.getForwardOverrideBy())
++                .forwardOverrideByName(users.get(instance.getForwardOverrideBy()))
++                .forwardOverrideAt(instance.getForwardOverrideAt())
++                .forwardOverrideRemarks(instance.getForwardOverrideRemarks())
++                .completedAt(instance.getCompletedAt()).createdAt(instance.getCreatedAt())
++                .summary(calculateSummary(instance)).items(items).timeline(timeline(instance, users)).build();
++    }
++
++    private ChecklistDtos.InstanceItemResponse toInstanceItem(ChecklistInstanceItem item,
++                                                                Map<UUID, String> users) {
++        List<ChecklistDtos.AttachmentResponse> attachments = attachmentRepository
++                .findByChecklistInstanceItemIdAndActiveTrueAndDeletedFalseOrderByUploadedAtAsc(item.getId())
++                .stream().map(attachment -> toAttachment(attachment, users)).toList();
++        return ChecklistDtos.InstanceItemResponse.builder()
++                .id(item.getId()).templateItemId(item.getChecklistItemId())
++                .name(item.getItemName()).description(item.getDescription())
++                .mandatory(item.getMandatory()).sequence(item.getSequence())
++                .remarksRequired(item.getRemarksRequired())
++                .allowMultipleAttachments(item.getAllowMultipleAttachments())
++                .supportedFileTypes(item.getSupportedFileTypes())
++                .maximumFileSizeBytes(item.getMaximumFileSizeBytes()).status(item.getStatus())
++                .uploadedBy(item.getUploadedBy()).uploadedByName(users.get(item.getUploadedBy()))
++                .uploadedAt(item.getUploadedAt()).verifiedBy(item.getVerifiedBy())
++                .verifiedByName(users.get(item.getVerifiedBy())).verifiedAt(item.getVerifiedAt())
++                .requestedBy(item.getRequestedBy()).requestedByName(users.get(item.getRequestedBy()))
++                .requestedAt(item.getRequestedAt()).remarks(item.getRemarks()).attachments(attachments).build();
++    }
++
++    private ChecklistDtos.AttachmentResponse toAttachment(Attachment attachment,
++                                                           Map<UUID, String> users) {
++        return ChecklistDtos.AttachmentResponse.builder()
++                .id(attachment.getId()).originalFileName(attachment.getOriginalFileName())
++                .fileExtension(attachment.getFileExtension()).mimeType(attachment.getMimeType())
++                .fileSize(attachment.getFileSize()).checksum(attachment.getChecksum())
++                .uploadedBy(attachment.getUploadedBy()).uploadedByName(users.get(attachment.getUploadedBy()))
++                .uploadedAt(attachment.getUploadedAt())
++                .downloadUrl("/api/v1/files/storage/" + attachment.getId() + "/download").build();
++    }
++
++    private ChecklistDtos.Summary toSummary(ChecklistInstance instance) {
++        return calculateSummary(instance);
++    }
++
++    private ChecklistDtos.Summary calculateSummary(ChecklistInstance instance) {
++        ChecklistTemplate template = findTemplate(instance.getChecklistTemplateId());
++        List<ChecklistInstanceItem> items = instanceItemRepository
++                .findByChecklistInstanceIdAndActiveTrueAndDeletedFalseOrderBySequenceAsc(instance.getId());
++        long completed = items.stream().filter(i -> Set.of("VERIFIED", "NOT_APPLICABLE").contains(i.getStatus())).count();
++        long uploaded = items.stream().filter(i -> "UPLOADED".equals(i.getStatus())).count();
++        long pendingVerification = items.stream().filter(i -> "UPLOADED".equals(i.getStatus())).count();
++        long missingMandatory = items.stream().filter(i -> Boolean.TRUE.equals(i.getMandatory())
++                && !FORWARD_READY.contains(i.getStatus())).count();
++        boolean complete = items.stream().filter(i -> Boolean.TRUE.equals(i.getMandatory()))
++                .allMatch(i -> Set.of("VERIFIED", "NOT_APPLICABLE").contains(i.getStatus()));
++        return ChecklistDtos.Summary.builder()
++                .instanceId(instance.getId()).templateId(template.getId()).templateName(template.getName())
++                .status(instance.getStatus()).totalItems(items.size()).completedItems(completed)
++                .uploadedItems(uploaded).pendingVerification(pendingVerification)
++                .missingMandatory(missingMandatory).complete(complete)
++                .forwardOverrideUsed(instance.getForwardOverrideAt() != null).build();
++    }
++
++    private List<ChecklistDtos.TimelineEvent> timeline(ChecklistInstance instance,
++                                                        Map<UUID, String> users) {
++        return auditLogRepository.findByModuleAndEntityTypeAndEntityIdOrderByCreatedAtAsc(
++                        MODULE, ENTITY_INSTANCE, instance.getId()).stream()
++                .map(log -> ChecklistDtos.TimelineEvent.builder()
++                        .timestamp(log.getCreatedAt()).action(log.getAction())
++                        .title(eventTitle(log.getAction())).detail(log.getNewValue())
++                        .userId(log.getUserId()).userName(users.get(log.getUserId())).build())
++                .toList();
++    }
++
++    private void applyTemplate(ChecklistTemplate template, ChecklistDtos.TemplateRequest request,
++                               String code) {
++        template.setCode(code);
++        template.setName(request.getName().trim());
++        template.setDescription(blankToNull(request.getDescription()));
++        template.setAllowForwardIfIncomplete(Boolean.TRUE.equals(request.getAllowForwardIfIncomplete()));
++        template.setActive(request.getActive() == null || request.getActive());
++    }
++
++    private void saveTemplateItems(UUID templateId, List<ChecklistDtos.ItemRequest> requests) {
++        if (requests == null || requests.isEmpty()) {
++            throw new ValidationException("At least one checklist item is required");
++        }
++        Set<Integer> sequences = new LinkedHashSet<>();
++        List<ChecklistItem> items = new ArrayList<>();
++        for (ChecklistDtos.ItemRequest request : requests) {
++            if (!sequences.add(request.getSequence())) {
++                throw new ValidationException("Checklist item sequence must be unique");
++            }
++            ChecklistItem item = new ChecklistItem();
++            item.setChecklistTemplateId(templateId);
++            item.setItemName(request.getName().trim());
++            item.setDescription(blankToNull(request.getDescription()));
++            item.setMandatory(Boolean.TRUE.equals(request.getMandatory()));
++            item.setActive(request.getActive() == null || request.getActive());
++            item.setSequence(request.getSequence());
++            item.setRemarksRequired(Boolean.TRUE.equals(request.getRemarksRequired()));
++            item.setAllowMultipleAttachments(Boolean.TRUE.equals(request.getAllowMultipleAttachments()));
++            item.setSupportedFileTypes(normalizeTypes(request.getSupportedFileTypes()));
++            item.setMaximumFileSizeBytes(request.getMaximumFileSizeBytes());
++            items.add(item);
++        }
++        itemRepository.saveAll(items);
++    }
++
++    private ChecklistInstanceItem snapshot(UUID instanceId, ChecklistItem item) {
++        ChecklistInstanceItem snapshot = new ChecklistInstanceItem();
++        snapshot.setChecklistInstanceId(instanceId);
++        snapshot.setChecklistItemId(item.getId());
++        snapshot.setItemName(item.getItemName());
++        snapshot.setDescription(item.getDescription());
++        snapshot.setMandatory(item.getMandatory());
++        snapshot.setSequence(item.getSequence());
++        snapshot.setRemarksRequired(item.getRemarksRequired());
++        snapshot.setAllowMultipleAttachments(item.getAllowMultipleAttachments());
++        snapshot.setSupportedFileTypes(item.getSupportedFileTypes());
++        snapshot.setMaximumFileSizeBytes(item.getMaximumFileSizeBytes());
++        snapshot.setStatus("PENDING");
++        snapshot.setActive(Boolean.TRUE);
++        return snapshot;
++    }
++
++    private void validateFile(ChecklistInstanceItem item, MultipartFile file) {
++        if (file == null || file.isEmpty()) throw new ValidationException("Uploaded file is empty");
++        if (item.getMaximumFileSizeBytes() != null && file.getSize() > item.getMaximumFileSizeBytes()) {
++            throw new ValidationException("Maximum file size for " + item.getItemName() + " is "
++                    + item.getMaximumFileSizeBytes() + " bytes");
++        }
++        if (StringUtils.hasText(item.getSupportedFileTypes())) {
++            String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
++            int dot = name.lastIndexOf('.');
++            String extension = dot >= 0 ? name.substring(dot + 1).toLowerCase(Locale.ROOT) : "";
++            Set<String> allowed = Set.of(item.getSupportedFileTypes().split(","));
++            if (!allowed.contains(extension)) {
++                throw new ValidationException("Supported file types for " + item.getItemName()
++                        + ": " + item.getSupportedFileTypes());
++            }
++        }
++    }
++
++    private void recordInstanceEvent(UUID instanceId, String action,
++                                     ChecklistInstanceItem item, String detail) {
++        String value = (item != null ? "item=" + item.getItemName() + "; " : "") + detail;
++        auditService.record(MODULE, ENTITY_INSTANCE, instanceId, action, null, value);
++    }
++
++    private ChecklistTemplate findTemplate(UUID id) {
++        return templateRepository.findByIdAndDeletedFalse(id)
++                .orElseThrow(() -> new ResourceNotFoundException("Checklist template", id));
++    }
++
++    private ChecklistInstance findInstance(UUID id) {
++        return instanceRepository.findByIdAndDeletedFalse(id)
++                .orElseThrow(() -> new ResourceNotFoundException("Checklist instance", id));
++    }
++
++    private ChecklistInstanceItem findInstanceItem(UUID id) {
++        return instanceItemRepository.findByIdAndDeletedFalse(id)
++                .filter(item -> Boolean.TRUE.equals(item.getActive()))
++                .orElseThrow(() -> new ResourceNotFoundException("Checklist item", id));
++    }
++
++    private UUID resolveSectionId(ChecklistInstance instance) {
++        if (instance.getLetterId() != null) {
++            return letterRepository.findByIdAndDeletedFalse(instance.getLetterId())
++                    .map(Letter::getCurrentSectionId).orElse(null);
++        }
++        return diaryRepository.findByIdAndDeletedFalse(instance.getDiaryEntryId())
++                .map(DiaryEntry::getInitialSectionId).orElse(null);
++    }
++
++    private Map<String, Double> compliance(List<SummaryRow> rows,
++                                           Function<SummaryRow, String> classifier) {
++        Map<String, List<SummaryRow>> groups = rows.stream()
++                .collect(Collectors.groupingBy(r -> fallback(classifier.apply(r)), LinkedHashMap::new,
++                        Collectors.toList()));
++        Map<String, Double> result = new LinkedHashMap<>();
++        groups.forEach((name, values) -> result.put(name,
++                percent(values.stream().filter(r -> r.summary().isComplete()).count(), values.size())));
++        return result;
++    }
++
++    private double percent(long numerator, long denominator) {
++        return denominator == 0 ? 0.0 : Math.round((numerator * 10000.0) / denominator) / 100.0;
++    }
++
++    private void requireAuthority(String authority) {
++        if (!SecurityUtils.hasAuthority(authority)) {
++            throw new ForbiddenException("Missing permission: " + authority);
++        }
++    }
++
++    private UUID currentUserId() {
++        return SecurityUtils.getCurrentUserId()
++                .orElseThrow(() -> new UnauthorizedException("Not authenticated"));
++    }
++
++    private String normalizeCode(String value) {
++        return value.trim().toUpperCase(Locale.ROOT).replaceAll("[^A-Z0-9_-]", "_");
++    }
++
++    private String normalizeTypes(String value) {
++        if (!StringUtils.hasText(value)) return null;
++        return java.util.Arrays.stream(value.toLowerCase(Locale.ROOT).split("[,\\s]+"))
++                .map(type -> type.replace(".", "").trim()).filter(type -> !type.isBlank())
++                .distinct().collect(Collectors.joining(","));
++    }
++
++    private String blankToNull(String value) {
++        return StringUtils.hasText(value) ? value.trim() : null;
++    }
++
++    private String fallback(String value) {
++        return StringUtils.hasText(value) ? value : "Unassigned";
++    }
++
++    private String eventTitle(String action) {
++        return switch (action) {
++            case "CREATED" -> "Checklist loaded";
++            case "UPLOADED" -> "Document uploaded";
++            case "VERIFIED" -> "Document verified";
++            case "REJECTED" -> "Document rejected";
++            case "NOT_APPLICABLE" -> "Marked not applicable";
++            case "REQUESTED" -> "Additional document requested";
++            case "FORWARD_OVERRIDE" -> "Forwarded with checklist exception";
++            case "LINKED_TO_LETTER" -> "Checklist linked to letter";
++            default -> action.replace('_', ' ');
++        };
++    }
++
++    private record SummaryRow(ChecklistInstance instance, ChecklistDtos.Summary summary,
++                              String categoryName, String sectionName, String departmentName) { }
++}
+diff --git a/src/main/java/com/bor/eboard/correspondence/controller/LetterController.java b/src/main/java/com/bor/eboard/correspondence/controller/LetterController.java
+index 3ec7460..349065b 100644
+--- a/src/main/java/com/bor/eboard/correspondence/controller/LetterController.java
++++ b/src/main/java/com/bor/eboard/correspondence/controller/LetterController.java
+@@ -147,13 +147,18 @@ public class LetterController {
+             @RequestParam(required = false) String status,
+             @RequestParam(required = false) UUID sectionId,
+             @RequestParam(required = false) UUID fileId,
++            @RequestParam(required = false) UUID checklistTemplateId,
++            @RequestParam(required = false) String checklistStatus,
++            @RequestParam(required = false) Boolean checklistComplete,
++            @RequestParam(required = false) Boolean missingMandatory,
+             @RequestParam(defaultValue = "0") int page,
+             @RequestParam(defaultValue = "15") int size) {
+         PaginationRequest pagination = new PaginationRequest();
+         pagination.setPage(page);
+         pagination.setSize(size);
+         return ApiResponse.success(letterService.search(
+-                letterNumber, subject, direction, letterType, status, sectionId, fileId, pagination));
++                letterNumber, subject, direction, letterType, status, sectionId, fileId,
++                checklistTemplateId, checklistStatus, checklistComplete, missingMandatory, pagination));
+     }
+ 
+     /** Correct a draft letter's metadata. Owner-only, DRAFT-only. */
+diff --git a/src/main/java/com/bor/eboard/correspondence/dto/LetterResponse.java b/src/main/java/com/bor/eboard/correspondence/dto/LetterResponse.java
+index 3c623d3..db7fab9 100644
+--- a/src/main/java/com/bor/eboard/correspondence/dto/LetterResponse.java
++++ b/src/main/java/com/bor/eboard/correspondence/dto/LetterResponse.java
+@@ -1,5 +1,7 @@
+ package com.bor.eboard.correspondence.dto;
+ 
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++
+ import lombok.AllArgsConstructor;
+ import lombok.Builder;
+ import lombok.Data;
+@@ -51,4 +53,6 @@ public class LetterResponse {
+     private String currentStatus;
+     private LocalDateTime createdAt;
+     private List<AttachmentInfo> attachments;
++    private ChecklistDtos.Summary checklistSummary;
++    private ChecklistDtos.InstanceResponse checklist;
+ }
+diff --git a/src/main/java/com/bor/eboard/correspondence/dto/MarkLetterRequest.java b/src/main/java/com/bor/eboard/correspondence/dto/MarkLetterRequest.java
+index be6670e..24d8aa1 100644
+--- a/src/main/java/com/bor/eboard/correspondence/dto/MarkLetterRequest.java
++++ b/src/main/java/com/bor/eboard/correspondence/dto/MarkLetterRequest.java
+@@ -15,4 +15,6 @@ public class MarkLetterRequest {
+     private UUID toRoleId;
+     private UUID toSectionId;
+     private String remarks;
++    private Boolean checklistOverride;
++    private String checklistOverrideRemarks;
+ }
+diff --git a/src/main/java/com/bor/eboard/correspondence/entity/Attachment.java b/src/main/java/com/bor/eboard/correspondence/entity/Attachment.java
+index 9baaaf4..a324031 100644
+--- a/src/main/java/com/bor/eboard/correspondence/entity/Attachment.java
++++ b/src/main/java/com/bor/eboard/correspondence/entity/Attachment.java
+@@ -31,6 +31,10 @@ public class Attachment extends BaseEntity {
+     @Column(name = "document_type_id")
+     private UUID documentTypeId;
+ 
++    /** Optional link to an independent checklist item; storage remains shared. */
++    @Column(name = "checklist_instance_item_id")
++    private UUID checklistInstanceItemId;
++
+     @Column(name = "original_file_name", nullable = false, length = 255)
+     private String originalFileName;
+ 
+diff --git a/src/main/java/com/bor/eboard/correspondence/facade/impl/CorrespondenceFacadeImpl.java b/src/main/java/com/bor/eboard/correspondence/facade/impl/CorrespondenceFacadeImpl.java
+index 32db6f5..a9ab862 100644
+--- a/src/main/java/com/bor/eboard/correspondence/facade/impl/CorrespondenceFacadeImpl.java
++++ b/src/main/java/com/bor/eboard/correspondence/facade/impl/CorrespondenceFacadeImpl.java
+@@ -3,7 +3,6 @@ package com.bor.eboard.correspondence.facade.impl;
+ import com.bor.eboard.correspondence.entity.Letter;
+ import com.bor.eboard.correspondence.facade.CorrespondenceFacade;
+ import com.bor.eboard.correspondence.repository.LetterRepository;
+-import com.bor.eboard.filestorage.service.impl.AttachmentStorageServiceImpl;
+ import com.bor.eboard.workflow.event.LetterCreatedEvent;
+ 
+ import lombok.RequiredArgsConstructor;
+@@ -21,6 +20,7 @@ public class CorrespondenceFacadeImpl implements CorrespondenceFacade {
+     private static final String LETTER_STATUS_RECEIVED = "OPEN";
+     
+     private final com.bor.eboard.filestorage.service.AttachmentStorageService attachmentStorageService;
++    private final com.bor.eboard.checklist.service.ChecklistService checklistService;
+     /** File statuses that are read-only (08_BUSINESS_RULES.md file rules 8-9). */
+     private static final java.util.Set<String> LOCKED_FILE_STATUSES =
+             java.util.Set.of("CLOSED", "ARCHIVED");
+@@ -68,8 +68,8 @@ public class CorrespondenceFacadeImpl implements CorrespondenceFacade {
+         Letter saved = letterRepository.save(letter);
+ 
+      // 🔥 Attachments linking
+-        ((com.bor.eboard.filestorage.service.impl.AttachmentStorageServiceImpl) attachmentStorageService)
+-        .linkDiaryAttachmentsToLetter(command.diaryEntryId(), saved.getId());
++        attachmentStorageService.linkDiaryAttachmentsToLetter(command.diaryEntryId(), saved.getId());
++        checklistService.linkDiaryToLetter(command.diaryEntryId(), saved.getId());
+ 
+      // 🔥 Workflow trigger
+      eventPublisher.publishEvent(
+diff --git a/src/main/java/com/bor/eboard/correspondence/repository/AttachmentRepository.java b/src/main/java/com/bor/eboard/correspondence/repository/AttachmentRepository.java
+index 09f575a..f61dc66 100644
+--- a/src/main/java/com/bor/eboard/correspondence/repository/AttachmentRepository.java
++++ b/src/main/java/com/bor/eboard/correspondence/repository/AttachmentRepository.java
+@@ -15,4 +15,9 @@ public interface AttachmentRepository extends JpaRepository<Attachment, UUID> {
+ 
+     List<Attachment> findByLinkedEntityTypeAndLinkedEntityIdAndActiveTrueAndDeletedFalseOrderByUploadedAtAsc(
+             String linkedEntityType, UUID linkedEntityId);
++
++    List<Attachment> findByChecklistInstanceItemIdAndActiveTrueAndDeletedFalseOrderByUploadedAtAsc(
++            UUID checklistInstanceItemId);
++
++    long countByChecklistInstanceItemIdAndActiveTrueAndDeletedFalse(UUID checklistInstanceItemId);
+ }
+diff --git a/src/main/java/com/bor/eboard/correspondence/repository/LetterRepository.java b/src/main/java/com/bor/eboard/correspondence/repository/LetterRepository.java
+index 99d172b..b73405c 100644
+--- a/src/main/java/com/bor/eboard/correspondence/repository/LetterRepository.java
++++ b/src/main/java/com/bor/eboard/correspondence/repository/LetterRepository.java
+@@ -108,6 +108,7 @@ public interface LetterRepository extends JpaRepository<Letter, UUID> {
+     		AND (:status IS NULL OR l.currentStatus = :status)
+     		AND (:sectionId IS NULL OR l.currentSectionId = :sectionId)
+     		AND (:fileId IS NULL OR l.fileId = :fileId)
++            AND (:checklistFilter = FALSE OR l.id IN :checklistLetterIds)
+     		""")
+     Page<Letter> search(@Param("letterNumber") String letterNumber,
+                         @Param("subject") String subject,
+@@ -116,6 +117,8 @@ public interface LetterRepository extends JpaRepository<Letter, UUID> {
+                         @Param("status") String status,
+                         @Param("sectionId") UUID sectionId,
+                         @Param("fileId") UUID fileId,
++                        @Param("checklistFilter") boolean checklistFilter,
++                        @Param("checklistLetterIds") java.util.Collection<UUID> checklistLetterIds,
+                         Pageable pageable);
+ 
+     @org.springframework.data.jpa.repository.Query("""
+diff --git a/src/main/java/com/bor/eboard/correspondence/service/LetterService.java b/src/main/java/com/bor/eboard/correspondence/service/LetterService.java
+index c935a3d..bdc9682 100644
+--- a/src/main/java/com/bor/eboard/correspondence/service/LetterService.java
++++ b/src/main/java/com/bor/eboard/correspondence/service/LetterService.java
+@@ -66,5 +66,7 @@ public interface LetterService {
+     PageResponse<LetterResponse> search(String letterNumber, String subject,
+                                         String direction, String letterType,
+                                         String status, UUID sectionId, UUID fileId,
++                                        UUID checklistTemplateId, String checklistStatus,
++                                        Boolean checklistComplete, Boolean missingMandatory,
+                                         PaginationRequest pagination);
+ }
+diff --git a/src/main/java/com/bor/eboard/correspondence/service/impl/LetterServiceImpl.java b/src/main/java/com/bor/eboard/correspondence/service/impl/LetterServiceImpl.java
+index 7e1bce0..84e929b 100644
+--- a/src/main/java/com/bor/eboard/correspondence/service/impl/LetterServiceImpl.java
++++ b/src/main/java/com/bor/eboard/correspondence/service/impl/LetterServiceImpl.java
+@@ -2,6 +2,7 @@ package com.bor.eboard.correspondence.service.impl;
+ 
+ import com.bor.eboard.admin.facade.MasterDataFacade;
+ import com.bor.eboard.audit.service.AuditService;
++import com.bor.eboard.checklist.service.ChecklistService;
+ import com.bor.eboard.common.exception.BusinessException;
+ import com.bor.eboard.common.exception.ResourceNotFoundException;
+ import com.bor.eboard.common.exception.UnauthorizedException;
+@@ -65,6 +66,7 @@ public class LetterServiceImpl implements LetterService {
+     private final CorrespondenceMapper mapper;
+     private final LookupProvider lookupProvider;
+     private final AuditService auditService;
++    private final ChecklistService checklistService;
+     // BCR-03 Part 16
+     private final LetterMovementRepository letterMovementRepository;
+     private final com.bor.eboard.identity.facade.IdentityFacade identityFacade;
+@@ -178,8 +180,11 @@ public class LetterServiceImpl implements LetterService {
+                 ? fileRepository.findByIdAndDeletedFalse(letter.getFileId())
+                         .map(FileEntity::getFileNumber).orElse(null)
+                 : null;
+-        return mapper.toLetterResponse(letter, fileNumber, lookups,
++        LetterResponse response = mapper.toLetterResponse(letter, fileNumber, lookups,
+                 attachmentsFor(letter.getId()));
++        checklistService.getSummaryForLetter(letter.getId()).ifPresent(response::setChecklistSummary);
++        checklistService.getForLetter(letter.getId()).ifPresent(response::setChecklist);
++        return response;
+     }
+ 
+     private List<AttachmentInfo> attachmentsFor(UUID letterId) {
+@@ -259,6 +264,10 @@ public class LetterServiceImpl implements LetterService {
+                     "No assignment rule permits you to mark this letter to that user.");
+         }
+ 
++        checklistService.validateLetterForward(letter.getId(),
++                Boolean.TRUE.equals(request.getChecklistOverride()),
++                request.getChecklistOverrideRemarks());
++
+         UUID fromUser = letter.getCurrentOwnerId();
+         UUID fromSection = letter.getCurrentSectionId();
+ 
+@@ -503,6 +512,8 @@ public class LetterServiceImpl implements LetterService {
+     public PageResponse<LetterResponse> search(String letterNumber, String subject,
+                                                String direction, String letterType,
+                                                String status, UUID sectionId, UUID fileId,
++                                               UUID checklistTemplateId, String checklistStatus,
++                                               Boolean checklistComplete, Boolean missingMandatory,
+                                                PaginationRequest pagination) {
+     	
+     	String normalizedLetterNumber =
+@@ -517,6 +528,10 @@ public class LetterServiceImpl implements LetterService {
+         org.springframework.data.domain.Page<Letter> page = letterRepository.search(
+         		normalizedLetterNumber, normalizedSubject, blankToNull(direction),
+                 blankToNull(letterType), blankToNull(status), sectionId, fileId,
++                checklistTemplateId != null || StringUtils.hasText(checklistStatus)
++                        || checklistComplete != null || missingMandatory != null,
++                nonEmptyIds(checklistService.matchingLetterIds(checklistTemplateId, checklistStatus,
++                        checklistComplete, missingMandatory)),
+                 pagination.toPageable());
+ 
+         List<LetterResponse> content = page.getContent().stream()
+@@ -564,6 +579,10 @@ public class LetterServiceImpl implements LetterService {
+                 + " — " + letter.getSubject();
+     }
+ 
++    private List<UUID> nonEmptyIds(List<UUID> ids) {
++        return ids == null || ids.isEmpty() ? List.of(new UUID(0L, 0L)) : ids;
++    }
++
+     private String blankToNull(String value) {
+         return (value == null || value.isBlank()) ? null : value;
+     }
+diff --git a/src/main/java/com/bor/eboard/dashboard/dto/DashboardMetrics.java b/src/main/java/com/bor/eboard/dashboard/dto/DashboardMetrics.java
+index 34a0d45..266b34f 100644
+--- a/src/main/java/com/bor/eboard/dashboard/dto/DashboardMetrics.java
++++ b/src/main/java/com/bor/eboard/dashboard/dto/DashboardMetrics.java
+@@ -1,5 +1,7 @@
+ package com.bor.eboard.dashboard.dto;
+ 
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++
+ import lombok.AllArgsConstructor;
+ import lombok.Builder;
+ import lombok.Data;
+@@ -55,6 +57,7 @@ public class DashboardMetrics {
+ 
+     // SLA ageing buckets (by days a pending task is overdue)
+     private SlaAgeing slaAgeing;
++    private ChecklistDtos.DashboardSummary checklist;
+ 
+     // Lists
+     private List<RecentFileRow> recentFiles;
+diff --git a/src/main/java/com/bor/eboard/dashboard/service/impl/DashboardServiceImpl.java b/src/main/java/com/bor/eboard/dashboard/service/impl/DashboardServiceImpl.java
+index baf20a7..e7a63db 100644
+--- a/src/main/java/com/bor/eboard/dashboard/service/impl/DashboardServiceImpl.java
++++ b/src/main/java/com/bor/eboard/dashboard/service/impl/DashboardServiceImpl.java
+@@ -2,6 +2,7 @@ package com.bor.eboard.dashboard.service.impl;
+ 
+ import com.bor.eboard.audit.service.AuditService;
+ import com.bor.eboard.charge.facade.ChargeFacade;
++import com.bor.eboard.checklist.service.ChecklistService;
+ import com.bor.eboard.common.exception.ForbiddenException;
+ import com.bor.eboard.common.exception.UnauthorizedException;
+ import com.bor.eboard.common.exception.ValidationException;
+@@ -63,6 +64,7 @@ public class DashboardServiceImpl implements DashboardService, DashboardScopeFac
+     private final IdentityFacade identityFacade;
+     private final ChargeFacade chargeFacade;
+     private final AuditService auditService;
++    private final ChecklistService checklistService;
+ 
+     @Override
+     @Transactional(readOnly = true)
+@@ -141,6 +143,7 @@ public class DashboardServiceImpl implements DashboardService, DashboardScopeFac
+                 .upcomingRetirements(upcomingRetirements)
+                 .retiredEmployees(retiredEmployees)
+                 .slaAgeing(ageing)
++                .checklist(checklistService.dashboard(scope.ownerId(), scope.sectionIds(), scope.organization()))
+                 .recentFiles(recent)
+                 .build();
+ 
+diff --git a/src/main/java/com/bor/eboard/filestorage/service/AttachmentStorageService.java b/src/main/java/com/bor/eboard/filestorage/service/AttachmentStorageService.java
+index b1870ae..5d93007 100644
+--- a/src/main/java/com/bor/eboard/filestorage/service/AttachmentStorageService.java
++++ b/src/main/java/com/bor/eboard/filestorage/service/AttachmentStorageService.java
+@@ -33,10 +33,18 @@ public interface AttachmentStorageService {
+     StoredAttachment store(String linkedEntityType, UUID linkedEntityId,
+                            UUID documentTypeId, MultipartFile file);
+ 
++    /** Stores in the same attachment table while linking the file to a checklist item. */
++    StoredAttachment store(String linkedEntityType, UUID linkedEntityId,
++                           UUID documentTypeId, UUID checklistInstanceItemId,
++                           MultipartFile file);
++
+     List<StoredAttachment> listFor(String linkedEntityType, UUID linkedEntityId);
+ 
+     DownloadableAttachment download(UUID attachmentId);
+ 
+     /** Marks an attachment inactive (records are never physically removed). */
+     void deactivate(UUID attachmentId);
++
++    /** Re-links all diary attachments to the generated inward letter. */
++    void linkDiaryAttachmentsToLetter(UUID diaryId, UUID letterId);
+ }
+diff --git a/src/main/java/com/bor/eboard/filestorage/service/impl/AttachmentStorageServiceImpl.java b/src/main/java/com/bor/eboard/filestorage/service/impl/AttachmentStorageServiceImpl.java
+index d4f120c..8da359f 100644
+--- a/src/main/java/com/bor/eboard/filestorage/service/impl/AttachmentStorageServiceImpl.java
++++ b/src/main/java/com/bor/eboard/filestorage/service/impl/AttachmentStorageServiceImpl.java
+@@ -61,6 +61,14 @@ public class AttachmentStorageServiceImpl implements AttachmentStorageService {
+     @Transactional
+     public StoredAttachment store(String linkedEntityType, UUID linkedEntityId,
+                                   UUID documentTypeId, MultipartFile file) {
++        return store(linkedEntityType, linkedEntityId, documentTypeId, null, file);
++    }
++
++    @Override
++    @Transactional
++    public StoredAttachment store(String linkedEntityType, UUID linkedEntityId,
++                                  UUID documentTypeId, UUID checklistInstanceItemId,
++                                  MultipartFile file) {
+         if (file == null || file.isEmpty()) {
+             throw new ValidationException("Uploaded file is empty");
+         }
+@@ -100,6 +108,7 @@ public class AttachmentStorageServiceImpl implements AttachmentStorageService {
+         attachment.setLinkedEntityType(linkedEntityType);
+         attachment.setLinkedEntityId(linkedEntityId);
+         attachment.setDocumentTypeId(documentTypeId);
++        attachment.setChecklistInstanceItemId(checklistInstanceItemId);
+         attachment.setOriginalFileName(originalFileName);
+         attachment.setStoredFileName(storedFileName);
+         attachment.setFileExtension(extension);
+@@ -202,6 +211,7 @@ public class AttachmentStorageServiceImpl implements AttachmentStorageService {
+     }
+     
+     
++    @Override
+     @Transactional
+     public void linkDiaryAttachmentsToLetter(UUID diaryId, UUID letterId) {
+ 
+diff --git a/src/main/java/com/bor/eboard/registry/controller/RegistryController.java b/src/main/java/com/bor/eboard/registry/controller/RegistryController.java
+index 6f27827..09b303e 100644
+--- a/src/main/java/com/bor/eboard/registry/controller/RegistryController.java
++++ b/src/main/java/com/bor/eboard/registry/controller/RegistryController.java
+@@ -79,6 +79,10 @@ public class RegistryController {
+             @RequestParam(required = false) String subject,
+             @RequestParam(required = false) String status,
+             @RequestParam(required = false) UUID sectionId,
++            @RequestParam(required = false) UUID checklistTemplateId,
++            @RequestParam(required = false) String checklistStatus,
++            @RequestParam(required = false) Boolean checklistComplete,
++            @RequestParam(required = false) Boolean missingMandatory,
+             @RequestParam(required = false)
+             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromDate,
+             @RequestParam(required = false)
+@@ -89,7 +93,8 @@ public class RegistryController {
+             @RequestParam(defaultValue = "desc") String sortDir) {
+         PaginationRequest pagination = new PaginationRequest(page, size, sortBy, sortDir);
+         return ApiResponse.success(diaryService.search(
+-                diaryNumber, sender, subject, status, sectionId, fromDate, toDate, pagination));
++                diaryNumber, sender, subject, status, sectionId, fromDate, toDate,
++                checklistTemplateId, checklistStatus, checklistComplete, missingMandatory, pagination));
+     }
+ 
+     @Operation(summary = "Forward diary entry to a section (locks metadata)")
+diff --git a/src/main/java/com/bor/eboard/registry/dto/DiaryEntryResponse.java b/src/main/java/com/bor/eboard/registry/dto/DiaryEntryResponse.java
+index b7be92a..775dc39 100644
+--- a/src/main/java/com/bor/eboard/registry/dto/DiaryEntryResponse.java
++++ b/src/main/java/com/bor/eboard/registry/dto/DiaryEntryResponse.java
+@@ -1,5 +1,7 @@
+ package com.bor.eboard.registry.dto;
+ 
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++
+ import lombok.AllArgsConstructor;
+ import lombok.Builder;
+ import lombok.Data;
+@@ -84,5 +86,7 @@ public class DiaryEntryResponse {
+     private List<DiaryTrackingEventResponse> movementHistory;
+     private List<DiaryTrackingEventResponse> timeline;
+     private List<DiaryFollowupResponse> followups;
++    private ChecklistDtos.Summary checklistSummary;
++    private ChecklistDtos.InstanceResponse checklist;
+     
+ }
+diff --git a/src/main/java/com/bor/eboard/registry/dto/ForwardDiaryRequest.java b/src/main/java/com/bor/eboard/registry/dto/ForwardDiaryRequest.java
+index 1a616cb..c749e28 100644
+--- a/src/main/java/com/bor/eboard/registry/dto/ForwardDiaryRequest.java
++++ b/src/main/java/com/bor/eboard/registry/dto/ForwardDiaryRequest.java
+@@ -22,4 +22,8 @@ public class ForwardDiaryRequest {
+     private UUID userId;
+ 
+     private String remarks;
++
++    /** Explicit, permission-controlled override when the mapped checklist is incomplete. */
++    private Boolean checklistOverride;
++    private String checklistOverrideRemarks;
+ }
+diff --git a/src/main/java/com/bor/eboard/registry/repository/DiaryEntryRepository.java b/src/main/java/com/bor/eboard/registry/repository/DiaryEntryRepository.java
+index 7d402f6..d3c5e34 100644
+--- a/src/main/java/com/bor/eboard/registry/repository/DiaryEntryRepository.java
++++ b/src/main/java/com/bor/eboard/registry/repository/DiaryEntryRepository.java
+@@ -46,6 +46,7 @@ public interface DiaryEntryRepository extends JpaRepository<DiaryEntry, UUID> {
+     	      )
+     	      AND d.receivedDate >= :fromDate
+     	      AND d.receivedDate <= :toDate
++              AND (:checklistFilter = FALSE OR d.id IN :checklistDiaryIds)
+     	    """)
+     	Page<DiaryEntry> search(
+     	        @Param("diaryNumber") String diaryNumber,
+@@ -55,6 +56,8 @@ public interface DiaryEntryRepository extends JpaRepository<DiaryEntry, UUID> {
+     	        @Param("sectionId") UUID sectionId,
+     	        @Param("fromDate") LocalDateTime fromDate,
+     	        @Param("toDate") LocalDateTime toDate,
++                @Param("checklistFilter") boolean checklistFilter,
++                @Param("checklistDiaryIds") java.util.Collection<UUID> checklistDiaryIds,
+     	        Pageable pageable);
+ 
+     @Query("""
+diff --git a/src/main/java/com/bor/eboard/registry/service/DiaryService.java b/src/main/java/com/bor/eboard/registry/service/DiaryService.java
+index 027be3e..1272114 100644
+--- a/src/main/java/com/bor/eboard/registry/service/DiaryService.java
++++ b/src/main/java/com/bor/eboard/registry/service/DiaryService.java
+@@ -31,6 +31,8 @@ public interface DiaryService {
+     PageResponse<DiaryEntryResponse> search(String diaryNumber, String sender,
+                                             String subject, String status, UUID sectionId,
+                                             LocalDateTime fromDate, LocalDateTime toDate,
++                                            UUID checklistTemplateId, String checklistStatus,
++                                            Boolean checklistComplete, Boolean missingMandatory,
+                                             PaginationRequest pagination);
+ 
+     /** Forward to section: status -> FORWARDED, inward letter created via facade. */
+diff --git a/src/main/java/com/bor/eboard/registry/service/impl/DiaryServiceImpl.java b/src/main/java/com/bor/eboard/registry/service/impl/DiaryServiceImpl.java
+index 4f962df..21b3609 100644
+--- a/src/main/java/com/bor/eboard/registry/service/impl/DiaryServiceImpl.java
++++ b/src/main/java/com/bor/eboard/registry/service/impl/DiaryServiceImpl.java
+@@ -2,6 +2,8 @@ package com.bor.eboard.registry.service.impl;
+ 
+ import com.bor.eboard.admin.facade.MasterDataFacade;
+ import com.bor.eboard.audit.service.AuditService;
++import com.bor.eboard.checklist.dto.ChecklistDtos;
++import com.bor.eboard.checklist.service.ChecklistService;
+ import com.bor.eboard.common.dto.PageResponse;
+ import com.bor.eboard.common.dto.PaginationRequest;
+ import com.bor.eboard.common.exception.BusinessException;
+@@ -82,6 +84,7 @@ public class DiaryServiceImpl implements DiaryService {
+     private final IdentityFacade identityFacade;
+     private final DiaryMapper diaryMapper;
+     private final AuditService auditService;
++    private final ChecklistService checklistService;
+     private final com.bor.eboard.notification.facade.NotificationFacade notificationFacade;
+     private final com.bor.eboard.workflow.facade.WorkflowEscalationFacade workflowTrackingFacade;
+ 
+@@ -128,6 +131,7 @@ public class DiaryServiceImpl implements DiaryService {
+         receipt.setReceivedAt(request.getReceivedDate());
+         receipt.setRemarks(request.getRemarks());
+         receiptRegisterRepository.save(receipt);
++        checklistService.syncForDiary(entry.getId(), entry.getCategoryId());
+ 
+         auditService.record(MODULE, "DIARY_ENTRY", entry.getId(),
+                 "CREATE", null,
+@@ -183,6 +187,7 @@ public class DiaryServiceImpl implements DiaryService {
+             entry.setStatus(STATUS_DIARIZED);
+         }
+         entry = diaryEntryRepository.save(entry);
++        checklistService.syncForDiary(entry.getId(), entry.getCategoryId());
+ 
+         auditService.record(MODULE, "DIARY_ENTRY", entry.getId(),
+                 "UPDATE", oldValue,
+@@ -213,6 +218,10 @@ public class DiaryServiceImpl implements DiaryService {
+             UUID sectionId,
+             LocalDateTime fromDate,
+             LocalDateTime toDate,
++            UUID checklistTemplateId,
++            String checklistStatus,
++            Boolean checklistComplete,
++            Boolean missingMandatory,
+             PaginationRequest pagination) {
+ 
+         String normalizedDiaryNumber = StringUtils.hasText(diaryNumber)
+@@ -248,6 +257,10 @@ public class DiaryServiceImpl implements DiaryService {
+                 sectionId,
+                 normalizedFromDate,
+                 normalizedToDate,
++                checklistTemplateId != null || StringUtils.hasText(checklistStatus)
++                        || checklistComplete != null || missingMandatory != null,
++                nonEmptyIds(checklistService.matchingDiaryIds(checklistTemplateId, checklistStatus,
++                        checklistComplete, missingMandatory)),
+                 pagination.toPageable());
+ 
+         Lookups lookups = loadLookups();
+@@ -260,6 +273,7 @@ public class DiaryServiceImpl implements DiaryService {
+                             lookups.languages(), lookups.departments(), lookups.sections(),
+                             lookups.users(), null, null);
+                     enrichLiveTracking(response, entry, lookups, false);
++                    enrichChecklist(response, entry, false);
+                     return response;
+                 })
+                 .toList();
+@@ -325,6 +339,10 @@ public class DiaryServiceImpl implements DiaryService {
+             }
+         }
+ 
++        checklistService.validateDiaryForward(entry.getId(),
++                Boolean.TRUE.equals(request.getChecklistOverride()),
++                request.getChecklistOverrideRemarks());
++
+         entry.setInitialSectionId(section.id());
+         entry.setInitialDepartmentId(section.departmentId());
+         entry.setInitialAssignedUserId(request.getUserId());
+@@ -498,6 +516,7 @@ public class DiaryServiceImpl implements DiaryService {
+                 receipt, attachments);
+ 
+         enrichLiveTracking(response, entry, lookups, true);
++        enrichChecklist(response, entry, true);
+         if (response.getWorkflowAttachments() == null) response.setWorkflowAttachments(List.of());
+         if (response.getMovementHistory() == null) response.setMovementHistory(List.of());
+         if (response.getTimeline() == null) response.setTimeline(List.of());
+@@ -548,6 +567,31 @@ public class DiaryServiceImpl implements DiaryService {
+         });
+     }
+ 
++    private void enrichChecklist(DiaryEntryResponse response, DiaryEntry entry, boolean includeDetails) {
++        checklistService.getSummaryForDiary(entry.getId()).ifPresent(response::setChecklistSummary);
++        if (!includeDetails) return;
++        checklistService.getForDiary(entry.getId()).ifPresent(checklist -> {
++            response.setChecklist(checklist);
++            List<DiaryTrackingEventResponse> timeline = new ArrayList<>(
++                    response.getTimeline() != null ? response.getTimeline() : List.of());
++            if (checklist.getTimeline() != null) {
++                checklist.getTimeline().forEach(event -> timeline.add(DiaryTrackingEventResponse.builder()
++                        .timestamp(event.getTimestamp()).eventType("CHECKLIST")
++                        .action(event.getAction()).title(event.getTitle()).detail(event.getDetail())
++                        .referenceId(event.getItemId() != null ? event.getItemId() : checklist.getId())
++                        .toUserId(event.getUserId()).toUserName(event.getUserName()).build()));
++            }
++            timeline.sort(Comparator.comparing(DiaryTrackingEventResponse::getTimestamp,
++                    Comparator.nullsLast(Comparator.naturalOrder())));
++            response.setTimeline(timeline);
++        });
++    }
++
++    private List<UUID> nonEmptyIds(List<UUID> ids) {
++        return ids == null || ids.isEmpty()
++                ? List.of(new UUID(0L, 0L)) : ids;
++    }
++
+     private void applySla(DiaryEntryResponse response, LocalDate dueDate) {
+         if (dueDate == null) {
+             response.setSlaStatus("NOT_SET");
+diff --git a/src/main/java/com/bor/eboard/workflow/dto/ForwardRequest.java b/src/main/java/com/bor/eboard/workflow/dto/ForwardRequest.java
+index f67b5e5..3e76cf7 100644
+--- a/src/main/java/com/bor/eboard/workflow/dto/ForwardRequest.java
++++ b/src/main/java/com/bor/eboard/workflow/dto/ForwardRequest.java
+@@ -15,4 +15,6 @@ public class ForwardRequest {
+     private UUID toUserId;
+     private UUID toSectionId;
+     private String remarks;
++    private Boolean checklistOverride;
++    private String checklistOverrideRemarks;
+ }
+diff --git a/src/main/java/com/bor/eboard/workflow/service/impl/WorkflowServiceImpl.java b/src/main/java/com/bor/eboard/workflow/service/impl/WorkflowServiceImpl.java
+index d10c5e9..20fbe82 100644
+--- a/src/main/java/com/bor/eboard/workflow/service/impl/WorkflowServiceImpl.java
++++ b/src/main/java/com/bor/eboard/workflow/service/impl/WorkflowServiceImpl.java
+@@ -2,6 +2,7 @@ package com.bor.eboard.workflow.service.impl;
+ 
+ import com.bor.eboard.admin.facade.MasterDataFacade;
+ import com.bor.eboard.audit.service.AuditService;
++import com.bor.eboard.checklist.service.ChecklistService;
+ import com.bor.eboard.common.dto.PageResponse;
+ import com.bor.eboard.common.dto.PaginationRequest;
+ import com.bor.eboard.common.exception.ResourceNotFoundException;
+@@ -102,6 +103,7 @@ public class WorkflowServiceImpl implements WorkflowService {
+     private final MasterDataFacade masterDataFacade;
+     private final WorkflowMapper mapper;
+     private final AuditService auditService;
++    private final ChecklistService checklistService;
+     private final com.bor.eboard.notification.facade.NotificationFacade notificationFacade;
+     private final com.bor.eboard.charge.facade.ChargeFacade chargeFacade;
+ 
+@@ -245,6 +247,12 @@ public class WorkflowServiceImpl implements WorkflowService {
+         WorkflowStep currentStep = stepById(steps, currentTask.getStepId());
+         WorkflowStep nextStep = nextStep(steps, currentStep.getStepOrder());
+ 
++        if (subject.letterId() != null) {
++            checklistService.validateLetterForward(subject.letterId(),
++                    Boolean.TRUE.equals(request.getChecklistOverride()),
++                    request.getChecklistOverrideRemarks());
++        }
++
+         completeTask(currentTask);
+ 
+         UUID toUser;
+diff --git a/src/main/resources/db/migration/V38__create_checklist_engine.sql b/src/main/resources/db/migration/V38__create_checklist_engine.sql
+new file mode 100644
+index 0000000..3f02382
+--- /dev/null
++++ b/src/main/resources/db/migration/V38__create_checklist_engine.sql
+@@ -0,0 +1,174 @@
++-- =====================================================================
++-- V38: Independent configurable Checklist Engine for Diary/Letter.
++-- Reuses correspondence_attachments; no DMS table is referenced.
++-- =====================================================================
++
++CREATE TABLE checklist_templates (
++    id                          UUID PRIMARY KEY,
++    code                        VARCHAR(80) UNIQUE NOT NULL,
++    name                        VARCHAR(200) NOT NULL,
++    description                 TEXT,
++    allow_forward_if_incomplete BOOLEAN NOT NULL DEFAULT FALSE,
++    active                      BOOLEAN NOT NULL DEFAULT TRUE,
++    created_at                  TIMESTAMP NOT NULL,
++    updated_at                  TIMESTAMP,
++    created_by                  UUID,
++    updated_by                  UUID,
++    deleted                     BOOLEAN NOT NULL DEFAULT FALSE
++);
++
++CREATE TABLE checklist_items (
++    id                         UUID PRIMARY KEY,
++    checklist_template_id      UUID NOT NULL,
++    item_name                  VARCHAR(200) NOT NULL,
++    description                TEXT,
++    mandatory                  BOOLEAN NOT NULL DEFAULT FALSE,
++    active                     BOOLEAN NOT NULL DEFAULT TRUE,
++    sequence_no                INT NOT NULL,
++    remarks_required           BOOLEAN NOT NULL DEFAULT FALSE,
++    allow_multiple_attachments BOOLEAN NOT NULL DEFAULT FALSE,
++    supported_file_types       VARCHAR(500),
++    maximum_file_size_bytes    BIGINT,
++    created_at                 TIMESTAMP NOT NULL,
++    updated_at                 TIMESTAMP,
++    created_by                 UUID,
++    updated_by                 UUID,
++    deleted                    BOOLEAN NOT NULL DEFAULT FALSE
++);
++CREATE INDEX idx_checklist_items_template
++    ON checklist_items(checklist_template_id, sequence_no);
++
++CREATE TABLE letter_category_checklists (
++    id                    UUID PRIMARY KEY,
++    category_id           UUID NOT NULL,
++    checklist_template_id UUID NOT NULL,
++    active                BOOLEAN NOT NULL DEFAULT TRUE,
++    created_at            TIMESTAMP NOT NULL,
++    updated_at            TIMESTAMP,
++    created_by            UUID,
++    updated_by            UUID,
++    deleted               BOOLEAN NOT NULL DEFAULT FALSE
++);
++CREATE UNIQUE INDEX uq_active_category_checklist
++    ON letter_category_checklists(category_id) WHERE deleted = FALSE;
++CREATE INDEX idx_category_checklist_template
++    ON letter_category_checklists(checklist_template_id);
++
++CREATE TABLE checklist_instances (
++    id                          UUID PRIMARY KEY,
++    checklist_template_id       UUID NOT NULL,
++    category_id                 UUID NOT NULL,
++    diary_entry_id              UUID,
++    letter_id                   UUID,
++    status                      VARCHAR(50) NOT NULL,
++    completed_at                TIMESTAMP,
++    forward_override_by         UUID,
++    forward_override_at         TIMESTAMP,
++    forward_override_remarks    TEXT,
++    created_at                  TIMESTAMP NOT NULL,
++    updated_at                  TIMESTAMP,
++    created_by                  UUID,
++    updated_by                  UUID,
++    deleted                     BOOLEAN NOT NULL DEFAULT FALSE
++);
++CREATE UNIQUE INDEX uq_checklist_instance_diary
++    ON checklist_instances(diary_entry_id)
++    WHERE diary_entry_id IS NOT NULL AND deleted = FALSE;
++CREATE UNIQUE INDEX uq_checklist_instance_letter
++    ON checklist_instances(letter_id)
++    WHERE letter_id IS NOT NULL AND deleted = FALSE;
++CREATE INDEX idx_checklist_instance_template ON checklist_instances(checklist_template_id);
++CREATE INDEX idx_checklist_instance_status ON checklist_instances(status);
++
++CREATE TABLE checklist_instance_items (
++    id                         UUID PRIMARY KEY,
++    checklist_instance_id      UUID NOT NULL,
++    checklist_item_id          UUID,
++    item_name                  VARCHAR(200) NOT NULL,
++    description                TEXT,
++    mandatory                  BOOLEAN NOT NULL DEFAULT FALSE,
++    sequence_no                INT NOT NULL,
++    remarks_required           BOOLEAN NOT NULL DEFAULT FALSE,
++    allow_multiple_attachments BOOLEAN NOT NULL DEFAULT FALSE,
++    supported_file_types       VARCHAR(500),
++    maximum_file_size_bytes    BIGINT,
++    status                     VARCHAR(50) NOT NULL,
++    uploaded_by                UUID,
++    uploaded_at                TIMESTAMP,
++    verified_by                UUID,
++    verified_at                TIMESTAMP,
++    requested_by               UUID,
++    requested_at               TIMESTAMP,
++    remarks                    TEXT,
++    active                     BOOLEAN NOT NULL DEFAULT TRUE,
++    created_at                 TIMESTAMP NOT NULL,
++    updated_at                 TIMESTAMP,
++    created_by                 UUID,
++    updated_by                 UUID,
++    deleted                    BOOLEAN NOT NULL DEFAULT FALSE
++);
++CREATE INDEX idx_checklist_instance_items_instance
++    ON checklist_instance_items(checklist_instance_id, sequence_no);
++CREATE INDEX idx_checklist_instance_items_status
++    ON checklist_instance_items(status);
++
++ALTER TABLE correspondence_attachments
++    ADD COLUMN checklist_instance_item_id UUID;
++CREATE INDEX idx_attachments_checklist_item
++    ON correspondence_attachments(checklist_instance_item_id)
++    WHERE checklist_instance_item_id IS NOT NULL;
++
++INSERT INTO identity_permissions (id, code, module, description, created_at, deleted) VALUES
++('50000000-0000-0000-0000-000000000121', 'CHECKLIST_VIEW',     'CHECKLIST', 'View checklist configuration and case checklists', NOW(), FALSE),
++('50000000-0000-0000-0000-000000000122', 'CHECKLIST_UPLOAD',   'CHECKLIST', 'Upload documents against checklist items', NOW(), FALSE),
++('50000000-0000-0000-0000-000000000123', 'CHECKLIST_VERIFY',   'CHECKLIST', 'Verify, reject or request checklist documents', NOW(), FALSE),
++('50000000-0000-0000-0000-000000000124', 'CHECKLIST_OVERRIDE', 'CHECKLIST', 'Forward an incomplete checklist with recorded justification', NOW(), FALSE),
++('50000000-0000-0000-0000-000000000125', 'CHECKLIST_ADMIN',    'CHECKLIST', 'Configure checklist templates, items and category mappings', NOW(), FALSE)
++ON CONFLICT (code) DO NOTHING;
++
++-- Every role that already sees diaries or letters may see their checklist.
++INSERT INTO identity_role_permissions (id, role_id, permission_id, created_at)
++SELECT gen_random_uuid(), rp.role_id, p.id, NOW()
++FROM identity_role_permissions rp
++JOIN identity_permissions existing ON existing.id = rp.permission_id
++CROSS JOIN identity_permissions p
++WHERE existing.code IN ('DIARY_VIEW', 'LETTER_VIEW')
++  AND p.code = 'CHECKLIST_VIEW'
++ON CONFLICT (role_id, permission_id) DO NOTHING;
++
++-- Registry/letter creators may upload checklist documents.
++INSERT INTO identity_role_permissions (id, role_id, permission_id, created_at)
++SELECT gen_random_uuid(), rp.role_id, p.id, NOW()
++FROM identity_role_permissions rp
++JOIN identity_permissions existing ON existing.id = rp.permission_id
++CROSS JOIN identity_permissions p
++WHERE existing.code IN ('DIARY_CREATE', 'LETTER_CREATE')
++  AND p.code = 'CHECKLIST_UPLOAD'
++ON CONFLICT (role_id, permission_id) DO NOTHING;
++
++-- Workflow approvers may verify/request and override when policy permits.
++INSERT INTO identity_role_permissions (id, role_id, permission_id, created_at)
++SELECT gen_random_uuid(), rp.role_id, p.id, NOW()
++FROM identity_role_permissions rp
++JOIN identity_permissions existing ON existing.id = rp.permission_id
++CROSS JOIN identity_permissions p
++WHERE existing.code = 'WORKFLOW_APPROVE'
++  AND p.code IN ('CHECKLIST_VERIFY', 'CHECKLIST_OVERRIDE')
++ON CONFLICT (role_id, permission_id) DO NOTHING;
++
++-- Master administrators configure the engine.
++INSERT INTO identity_role_permissions (id, role_id, permission_id, created_at)
++SELECT gen_random_uuid(), rp.role_id, p.id, NOW()
++FROM identity_role_permissions rp
++JOIN identity_permissions existing ON existing.id = rp.permission_id
++CROSS JOIN identity_permissions p
++WHERE existing.code = 'MASTER_MANAGE'
++  AND p.code = 'CHECKLIST_ADMIN'
++ON CONFLICT (role_id, permission_id) DO NOTHING;
++
++-- SYSTEM_ADMIN gets all checklist permissions even if prior role grants differ.
++INSERT INTO identity_role_permissions (id, role_id, permission_id, created_at)
++SELECT gen_random_uuid(), '40000000-0000-0000-0000-000000000001', p.id, NOW()
++FROM identity_permissions p
++WHERE p.code IN ('CHECKLIST_VIEW', 'CHECKLIST_UPLOAD', 'CHECKLIST_VERIFY', 'CHECKLIST_OVERRIDE', 'CHECKLIST_ADMIN')
++ON CONFLICT (role_id, permission_id) DO NOTHING;

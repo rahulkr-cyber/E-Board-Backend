@@ -1,0 +1,128 @@
+spring:
+  application:
+    name: eboard-backend
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://10.135.28.185:5432/eboard_test}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      pool-name: eboard-pool
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Kolkata
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    # Migration file names follow 03_DATABASE.md (V1..V12). Later phases add
+    # V3..V11 after V12 (seed) is already applied, so out-of-order is enabled.
+    out-of-order: true
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 110MB
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+  error:
+    include-stacktrace: never
+    include-message: never
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:ChangeThisSecretInProduction-Minimum-256-bit-key-for-HS256-eBoard}
+    access-token-expiry-minutes: ${JWT_ACCESS_EXPIRY_MINUTES:30}
+    refresh-token-expiry-days: ${JWT_REFRESH_EXPIRY_DAYS:7}
+  login:
+    max-failed-attempts: ${LOGIN_MAX_FAILED_ATTEMPTS:5}
+    lock-duration-minutes: ${LOGIN_LOCK_DURATION_MINUTES:30}
+  captcha:
+    expiry-seconds: ${CAPTCHA_EXPIRY_SECONDS:40}
+    length: ${CAPTCHA_LENGTH:5}
+  otp:
+    expiry-seconds: ${OTP_EXPIRY_SECONDS:300}
+    length: ${OTP_LENGTH:6}
+    max-retries: ${OTP_MAX_RETRIES:5}
+    max-resends: ${OTP_MAX_RESENDS:3}
+    request-interval-seconds: ${OTP_REQUEST_INTERVAL_SECONDS:30}
+  password-reset:
+    minimum-length: ${PASSWORD_MINIMUM_LENGTH:8}
+    token-expiry-seconds: ${PASSWORD_RESET_TOKEN_EXPIRY_SECONDS:600}
+    password-expiry-days: ${PASSWORD_EXPIRY_DAYS:0}
+
+government-sms:
+  url: ${GOVERNMENT_SMS_URL:https://upbhulekh.gov.in/BhulekhServices/eRorPayment/loginsmsService}
+  otp-encryption-key: "${GOVERNMENT_SMS_OTP_ENCRYPTION_KEY:MobD2co7WSOtpd+HDQ==}"
+  connect-timeout-seconds: ${GOVERNMENT_SMS_CONNECT_TIMEOUT_SECONDS:5}
+  read-timeout-seconds: ${GOVERNMENT_SMS_READ_TIMEOUT_SECONDS:10}
+  text:
+    login: ${GOVERNMENT_SMS_LOGIN_TEXT:e-Board Login OTP}
+    password-reset: ${GOVERNMENT_SMS_PASSWORD_RESET_TEXT:e-Board Password Reset OTP}
+
+file-storage:
+  base-path: D:/E-Board/uploads
+
+# Storage owned exclusively by the configurable DMS module.
+dms:
+  enabled: ${DMS_ENABLED:true}
+  storage:
+    provider: ${DMS_STORAGE_PROVIDER:local}
+    local-base-path: ${DMS_LOCAL_STORAGE_BASE_PATH:D:/E-Board/uploads/dms}
+  upload:
+    max-file-size-bytes: ${DMS_MAX_FILE_SIZE_BYTES:104857600}
+    max-metadata-bytes: ${DMS_MAX_METADATA_BYTES:262144}
+    verify-checksum-on-download: ${DMS_VERIFY_CHECKSUM_ON_DOWNLOAD:true}
+    allowed-extensions: ${DMS_ALLOWED_EXTENSIONS:pdf,doc,docx,xls,xlsx,csv,txt,jpg,jpeg,png,tif,tiff}
+    allowed-mime-types: ${DMS_ALLOWED_MIME_TYPES:application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,image/jpeg,image/png,image/tiff}
+
+app:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200,http://10.135.28.189:4200}
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+    tags-sorter: alpha
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+logging:
+  level:
+    root: INFO
+    com.bor.eboard: DEBUG
+  file:
+    name: logs/eboard-application.log
+
+# Escalation sweep schedule (daily at 01:00 by default). Override to tune
+# or disable via a cron that never fires. Consumed by EscalationScheduler.
+escalation:
+  cron: ${ESCALATION_CRON:0 0 1 * * *}
+
+# Central secure document viewer. Storage providers remain unchanged.
+document-viewer:
+  watermark:
+    enabled: ${DOCUMENT_VIEWER_WATERMARK_ENABLED:true}
+    organization: ${DOCUMENT_VIEWER_WATERMARK_ORGANIZATION:Government of Uttar Pradesh}
+    office: ${DOCUMENT_VIEWER_WATERMARK_OFFICE:Board of Revenue}
+    include-ip: ${DOCUMENT_VIEWER_WATERMARK_INCLUDE_IP:true}
+  sharing:
+    allowed-expiry-minutes: ${DOCUMENT_VIEWER_SHARE_EXPIRY_MINUTES:30,60,1440}

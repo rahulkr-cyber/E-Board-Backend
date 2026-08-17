@@ -1,0 +1,4 @@
+2026-08-10T12:06:26.446+05:30  INFO 38536 --- [eboard-backend] [RMI TCP Connection(4706)-127.0.0.1] inMXBeanRegistrar$SpringApplicationAdmin : Application shutdown requested.
+2026-08-10T12:06:27.468+05:30  INFO 38536 --- [eboard-backend] [RMI TCP Connection(4706)-127.0.0.1] j.LocalContainerEntityManagerFactoryBean : Closing JPA EntityManagerFactory for persistence unit 'default'
+2026-08-10T12:06:27.593+05:30  INFO 38536 --- [eboard-backend] [RMI TCP Connection(4706)-127.0.0.1] com.zaxxer.hikari.HikariDataSource       : eboard-pool - Shutdown initiated...
+2026-08-10T12:06:27.658+05:30  INFO 38536 --- [eboard-backend] [RMI TCP Connection(4706)-127.0.0.1] com.zaxxer.hikari.HikariDataSource       : eboard-pool - Shutdown completed.
